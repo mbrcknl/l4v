@@ -16,6 +16,7 @@ val csenv = let
 
 context kernel_all_substitute begin
 
+(*
 lemma ctzl_body_refines:
   "simple_simpl_refines \<Gamma> (Guard ImpossibleSpec \<lbrace>\<acute>x \<noteq> 0\<rbrace>
     (\<acute>ret__long :== ucast (bv_ctz (\<acute>x)))) ctzl_body"
@@ -31,6 +32,7 @@ lemma clzl_body_refines:
   apply (rule simple_simpl_refines_guarded_Basic_guarded_spec_body)
   apply (clarsimp simp: bv_clz_def meq_def)
   done
+*)
 
 declare ctcb_offset_defs[simp]
 
