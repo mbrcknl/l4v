@@ -328,7 +328,7 @@ lemma liftM_return [simp]:
   by (simp add: liftM_def)
 
 lemma mapM_x_return :
-  "mapM_x (\<lambda>_. return v) xs = return v"
+  "mapM_x (\<lambda>_. return v) xs = return ()"
   by (induct xs) (auto simp: mapM_x_Nil mapM_x_Cons)
 
 lemma hoare_imp_eq_substR:

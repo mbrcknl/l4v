@@ -630,6 +630,40 @@ where
            ((\<not> (d \<le> maxDomain \<and> i < l2BitmapSize))
             \<longrightarrow>  abitmap2 (d, i) = 0)"
 
+\<comment> \<open>Fault messages\<close>
+
+datatype ('struct::c_type, 'len::finite) fault_message_info
+  = FaultMessageInfo (fmi_reg: "register list")
+                     (fmi_msg: "'struct \<Rightarrow> machine_word['len]")
+                     (fmi_upd: "(machine_word['len] \<Rightarrow> machine_word['len]) \<Rightarrow> 'struct \<Rightarrow> 'struct")
+                     (fmi_ptr: "'struct ptr")
+
+definition fault_message_length_relation :: "('struct::c_type, 'len::finite) fault_message_info \<Rightarrow> bool" where
+  "fault_message_length_relation fmi \<equiv> length (fmi_reg fmi) = CARD('len)"
+
+definition fault_message_relation_unguarded ::
+  "('struct::mem_type, 'len::finite) fault_message_info \<Rightarrow> ('struct ptr \<rightharpoonup> 'struct) \<Rightarrow> bool"
+  where
+  "fault_message_relation_unguarded fmi ch
+   \<equiv> \<exists>c_msg. ch (fmi_ptr fmi) = Some c_msg
+              \<and> list_array (fmi_msg fmi c_msg) = map register_from_H (fmi_reg fmi)"
+
+\<comment> \<open>Protects us from accidentally making a trivial state relation\<close>
+definition fault_message_relation_guarded ::
+  "('struct::mem_type, 'len::finite) fault_message_info \<Rightarrow> ('struct ptr \<rightharpoonup> 'struct) \<Rightarrow> bool"
+  where
+  "fault_message_relation_guarded fmi ch
+   \<equiv> fault_message_length_relation fmi \<longrightarrow> fault_message_relation_unguarded fmi ch"
+
+definition in_kernel_data :: "'a::mem_type ptr \<Rightarrow> bool" where
+  "in_kernel_data ref \<equiv> ptr_span ref \<subseteq> kernel_data_refs"
+
+abbreviation fault_message_relation ::
+  "('struct::mem_type, 'len::finite) fault_message_info \<Rightarrow> ('struct ptr \<rightharpoonup> 'struct) \<Rightarrow> bool"
+  where
+  "fault_message_relation fmi ch
+   \<equiv> fault_message_relation_guarded fmi ch \<and> in_kernel_data (fmi_ptr fmi)"
+
 end (* interpretation Arch . (*FIXME: arch_split*) *)
 
 definition
@@ -687,6 +721,35 @@ abbreviation intStateIRQNode_array_Ptr :: "(cte_C[64]) ptr" where
 abbreviation intStateIRQNode_Ptr :: "cte_C ptr" where
   "intStateIRQNode_Ptr \<equiv> Ptr (symbol_table ''intStateIRQNode'')"
 
+\<comment> \<open>Fault messages\<close>
+
+abbreviation syscall_fault_message_global_Ptr :: "syscall_fault_message_global_C ptr" where
+  "syscall_fault_message_global_Ptr \<equiv> Ptr (symbol_table ''syscall_fault_message'')"
+abbreviation syscall_fault_message_Ptr :: "(64 word[10]) ptr" where
+  "syscall_fault_message_Ptr \<equiv> Ptr &(syscall_fault_message_global_Ptr\<rightarrow>[''msg_C''])"
+
+abbreviation exception_fault_message_global_Ptr :: "exception_fault_message_global_C ptr" where
+  "exception_fault_message_global_Ptr \<equiv> Ptr (symbol_table ''exception_fault_message'')"
+abbreviation exception_fault_message_Ptr :: "(64 word[2]) ptr" where
+  "exception_fault_message_Ptr \<equiv> Ptr &(exception_fault_message_global_Ptr\<rightarrow>[''msg_C''])"
+
+definition syscall_fault_message_info  :: "(syscall_fault_message_global_C, 10) fault_message_info" where
+  "syscall_fault_message_info
+   \<equiv> FaultMessageInfo RISCV64_H.syscallMessage
+                       syscall_fault_message_global_C.msg_C
+                       syscall_fault_message_global_C.msg_C_update
+                       syscall_fault_message_global_Ptr"
+
+definition exception_fault_message_info  :: "(exception_fault_message_global_C, 2) fault_message_info" where
+  "exception_fault_message_info
+   \<equiv> FaultMessageInfo RISCV64_H.exceptionMessage
+                      exception_fault_message_global_C.msg_C
+                      exception_fault_message_global_C.msg_C_update
+                      exception_fault_message_global_Ptr"
+
+lemmas fault_message_info_defs
+  = syscall_fault_message_info_def exception_fault_message_info_def
+
 definition
   cstate_relation :: "KernelStateData_H.kernel_state \<Rightarrow> globals \<Rightarrow> bool"
 where
@@ -712,10 +775,12 @@ where
        apsnd fst (ghost'state_' cstate) = (gsUserPages astate, gsCNodes astate) \<and>
        ghost_size_rel (ghost'state_' cstate) (gsMaxObjectSize astate) \<and>
        ksWorkUnitsCompleted_' cstate = ksWorkUnitsCompleted astate \<and>
+       fault_message_relation syscall_fault_message_info (clift cheap) \<and>
+       fault_message_relation exception_fault_message_info (clift cheap) \<and>
        h_t_valid (hrs_htd (t_hrs_' cstate)) c_guard intStateIRQNode_array_Ptr \<and>
-       ptr_span intStateIRQNode_array_Ptr \<subseteq> kernel_data_refs \<and>
+       in_kernel_data intStateIRQNode_array_Ptr \<and>
        h_t_valid (hrs_htd (t_hrs_' cstate)) c_guard riscvKSGlobalPT_Ptr \<and>
-       ptr_span riscvKSGlobalPT_Ptr \<subseteq> kernel_data_refs \<and>
+       in_kernel_data riscvKSGlobalPT_Ptr \<and>
        htd_safe domain (hrs_htd (t_hrs_' cstate)) \<and>
        -domain \<subseteq> kernel_data_refs \<and>
        globals_list_distinct (- kernel_data_refs) symbol_table globals_list \<and>

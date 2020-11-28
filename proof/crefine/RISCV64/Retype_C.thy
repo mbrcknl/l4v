@@ -2159,7 +2159,7 @@ proof (intro impI allI)
   moreover
   from rf szb al
   have "ptr_span (pt_Ptr (symbol_table ''kernel_root_pageTable'')) \<inter> {ptr ..+ 2 ^ ptBits} = {}"
-    apply (clarsimp simp: valid_global_refs'_def  Let_def
+    apply (clarsimp simp: valid_global_refs'_def Let_def in_kernel_data_def
                           valid_refs'_def ran_def rf_sr_def cstate_relation_def)
     apply (erule disjoint_subset)
     apply (simp add:kernel_data_refs_disj[simplified bit_simps_corres])
@@ -2167,7 +2167,7 @@ proof (intro impI allI)
 
   ultimately
   show ?thesis using rf empty kernel_data_refs_disj rzo
-    apply (simp add: rf_sr_def cstate_relation_def Let_def rl' tag_disj_via_td_name)
+    apply (simp add: rf_sr_def cstate_relation_def Let_def rl' tag_disj_via_td_name in_kernel_data_def)
     apply (simp add: carch_state_relation_def cmachine_state_relation_def)
     apply (clarsimp simp add: rl' cterl tag_disj_via_td_name
       hrs_htd_update ht_rl foldr_upd_app_if [folded data_map_insert_def] rl projectKOs
@@ -6060,28 +6060,6 @@ lemma pspace_no_overlap_obj_atD':
   apply auto
   done
 
-lemma typ_bytes_cpspace_relation_clift_gptr:
-assumes "cpspace_relation (ksPSpace s) (underlying_memory (ksMachineState (s::kernel_state))) hp"
-  and "is_aligned ptr bits" "bits < word_bits"
-  and "pspace_aligned' s"
-  and "kernel_data_refs \<inter> {ptr ..+ 2^bits} = {}"
-  and "ptr_span (ptr' :: 'a ptr) \<subseteq> kernel_data_refs"
-  and "typ_uinfo_t TYPE('a :: mem_type) \<noteq> typ_uinfo_t TYPE(8 word)"
- shows "clift (hrs_htd_update (typ_region_bytes ptr bits) hp)
-    ptr'
-  = (clift hp) ptr'"
-  (is "?lhs = ?rhs ptr'")
-  using assms
-  apply -
-   apply (case_tac "ptr' \<notin> dom ?rhs")
-   apply (frule contra_subsetD[OF typ_region_bytes_dom[where ptr = ptr and bits = bits], rotated])
-    apply simp
-   apply fastforce
-  apply (clarsimp simp: liftt_if hrs_htd_update_def split_def split: if_splits)
-  apply (simp add: h_t_valid_typ_region_bytes)
-  apply blast
-  done
-
 lemma cmap_array_typ_region_bytes_triv[OF refl]:
   "ptrf = (Ptr :: _ \<Rightarrow> 'b ptr)
     \<Longrightarrow> carray_map_relation bits' (map_comp f (ksPSpace s)) (h_t_valid htd c_guard) ptrf
@@ -6243,28 +6221,18 @@ lemma ccorres_typ_region_bytes_dummy:
   apply (clarsimp simp: return_def)
   apply (simp add: rf_sr_def)
   apply vcg
-  apply (clarsimp simp: cstate_relation_def Let_def)
-  apply (frule typ_bytes_cpspace_relation_clift_tcb)
-      apply (simp add: invs_pspace_aligned')+
-  apply (frule typ_bytes_cpspace_relation_clift_pte)
-      apply (simp add: invs_pspace_aligned')+
-  apply (frule typ_bytes_cpspace_relation_clift_endpoint)
-      apply (simp add: invs_pspace_aligned')+
-  apply (frule typ_bytes_cpspace_relation_clift_notification)
-      apply (simp add: invs_pspace_aligned')+
-  apply (frule typ_bytes_cpspace_relation_clift_asid_pool)
-      apply (simp add: invs_pspace_aligned')+
-  apply (frule typ_bytes_cpspace_relation_clift_cte)
-      apply (simp add: invs_pspace_aligned')+
-  apply (frule typ_bytes_cpspace_relation_clift_userdata)
-      apply (simp add: invs_pspace_aligned')+
-  apply (frule typ_bytes_cpspace_relation_clift_devicedata)
-      apply (simp add: invs_pspace_aligned')+
-  apply (frule typ_bytes_cpspace_relation_clift_gptr[where ptr'="riscvKSGlobalPT_Ptr"])
-        apply (simp add: invs_pspace_aligned')+
-  apply (frule typ_bytes_cpspace_relation_clift_gptr[where ptr'="intStateIRQNode_array_Ptr"])
-        apply (simp add: invs_pspace_aligned')+
-  apply (simp add: carch_state_relation_def cmachine_state_relation_def)
+  apply (clarsimp simp: cstate_relation_def Let_def fault_message_relation_typ_region_bytes_intvl
+                        hrs_htd_update h_t_valid_in_kernel_data_typ_region_bytes_intvl)
+  apply (frule invs_pspace_aligned')
+  apply (frule (4) typ_bytes_cpspace_relation_clift_tcb)
+  apply (frule (4) typ_bytes_cpspace_relation_clift_pte)
+  apply (frule (4) typ_bytes_cpspace_relation_clift_endpoint)
+  apply (frule (4) typ_bytes_cpspace_relation_clift_notification)
+  apply (frule (4) typ_bytes_cpspace_relation_clift_asid_pool)
+  apply (frule (4) typ_bytes_cpspace_relation_clift_cte)
+  apply (frule (4) typ_bytes_cpspace_relation_clift_userdata)
+  apply (frule (4) typ_bytes_cpspace_relation_clift_devicedata)
+  apply (simp add: carch_state_relation_def cmachine_state_relation_def in_kernel_data_def)
   apply (simp add: cpspace_relation_def htd_safe_typ_region_bytes)
   apply (simp add: h_t_valid_clift_Some_iff)
   apply (simp add: hrs_htd_update gsCNodes_typ_region_bytes

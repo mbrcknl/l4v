@@ -958,6 +958,18 @@ lemma valid_mdb_ctes_of_prev:
   apply (simp add: cte_wp_at_ctes_of)
   done
 
+lemma length_syscallMessage:
+  "length RISCV64_H.syscallMessage = unat n_syscallMessage"
+  apply (simp add: syscallMessage_def RISCV64.syscallMessage_def
+                msgRegisters_unfold n_syscallMessage_def)
+  apply (simp add: upto_enum_def)
+  apply (simp add: fromEnum_def enum_register)
+  done
+
+lemma length_exceptionMessage:
+  "length RISCV64_H.exceptionMessage = unat n_exceptionMessage"
+  by (simp add: RISCV64_H.exceptionMessage_def RISCV64.exceptionMessage_def n_exceptionMessage_def)
+
 end
 
 context kernel
@@ -2162,6 +2174,76 @@ lemmas h_t_valid_nested_fields =
 lemmas h_t_valid_fields_clift =
   h_t_valid_nested_fields[OF h_t_valid_clift]
   h_t_valid_clift
+
+lemma rf_sr_cstate_relation:
+  "(s, s') \<in> rf_sr \<Longrightarrow> cstate_relation s (globals s')"
+  by (simp add: rf_sr_def)
+
+\<comment> \<open>Fault messages\<close>
+
+lemma fault_message_info_simps:
+  assumes def: "fmi \<equiv> FaultMessageInfo reg msg upd ptr"
+  shows fault_message_info_reg_simp: "fmi_reg fmi = reg"
+    and fault_message_info_msg_simp: "fmi_msg fmi = msg"
+    and fault_message_info_upd_simp: "fmi_upd fmi = upd"
+    and fault_message_info_ptr_simp: "fmi_ptr fmi = ptr"
+  by (auto simp: def)
+
+lemma fault_message_relation_unguarded:
+  assumes "fault_message_length_relation fmi"
+  shows "fault_message_relation_guarded fmi ch \<longleftrightarrow> fault_message_relation_unguarded fmi ch"
+  using assms by (auto simp: fault_message_relation_guarded_def)
+
+lemmas fault_message_relation_unguarded_defs
+  = fault_message_relation_unguarded fault_message_relation_unguarded_def
+
+lemma fault_message_relation_unguarded_length:
+  "fault_message_relation_unguarded fmi ch \<Longrightarrow> fault_message_length_relation fmi"
+  apply (clarsimp simp: fault_message_relation_unguarded_def fault_message_length_relation_def)
+  apply (drule arg_cong[where f=length], simp)
+  done
+
+lemma fault_message_length_relationD:
+  fixes fmi :: "('struct::mem_type, 'len::finite) fault_message_info"
+  shows "fault_message_length_relation fmi \<Longrightarrow> length (fmi_reg fmi) = CARD('len)"
+  by (simp add: fault_message_length_relation_def)
+
+lemma fault_message_relationE:
+  fixes fmi :: "('struct::mem_type, 'len::finite) fault_message_info"
+  assumes r: "fault_message_relation_unguarded fmi ch"
+  assumes i: "i < CARD('len)"
+  assumes m: "\<And>c_msg. \<lbrakk> ch (fmi_ptr fmi) = Some c_msg;
+                         fmi_msg fmi c_msg.[i] = register_from_H (fmi_reg fmi ! i) \<rbrakk>
+                       \<Longrightarrow> P"
+  shows P
+  using r i fault_message_relation_unguarded_length[OF r]
+  apply (clarsimp simp: fault_message_relation_unguarded_def)
+  apply (erule m)
+  apply (drule arg_cong[where f="\<lambda>xs. xs ! i"])
+  apply (simp add: fault_message_length_relationD list_array_nth)
+  done
+
+lemma syscall_fault_message_length_relation[simp, intro!]:
+  "fault_message_length_relation syscall_fault_message_info"
+  by (auto simp: syscall_fault_message_info_def fault_message_length_relation_def
+                 length_syscallMessage n_syscallMessage_def)
+
+lemma exception_fault_message_length_relation[simp, intro!]:
+  "fault_message_length_relation exception_fault_message_info"
+  by (auto simp: exception_fault_message_info_def fault_message_length_relation_def
+                 length_exceptionMessage n_exceptionMessage_def)
+
+lemma cstate_relation_syscall_fault_message_relation_unguarded:
+  "cstate_relation s s'
+   \<Longrightarrow> fault_message_relation_unguarded syscall_fault_message_info (clift (t_hrs_' s'))"
+  by (simp add: cstate_relation_def Let_def
+                fault_message_relation_unguarded[OF syscall_fault_message_length_relation])
+
+lemma cstate_relation_exception_fault_message_relation_unguarded:
+  "cstate_relation s s'
+   \<Longrightarrow> fault_message_relation_unguarded exception_fault_message_info (clift (t_hrs_' s'))"
+  by (simp add: cstate_relation_def Let_def
+                fault_message_relation_unguarded[OF exception_fault_message_length_relation])
 
 end
 end

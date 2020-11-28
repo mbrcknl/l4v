@@ -77,11 +77,6 @@ lemma valid_queuesD':
         \<Longrightarrow> t \<in> set (ksReadyQueues s (d, p))"
   by (simp add: valid_queues'_def)
 
-lemma invs_valid_queues'[elim!]:
-  "invs' s \<Longrightarrow> valid_queues' s"
-  by (simp add: invs'_def valid_state'_def)
-
-
 lemma ntfn_ptr_get_queue_spec:
   "\<forall>s. \<Gamma> \<turnstile> {\<sigma>. s = \<sigma> \<and> \<sigma> \<Turnstile>\<^sub>c \<^bsup>\<sigma>\<^esup>ntfnPtr} \<acute>ret__struct_tcb_queue_C :== PROC ntfn_ptr_get_queue(\<acute>ntfnPtr)
        \<lbrace>head_C \<acute>ret__struct_tcb_queue_C = Ptr (ntfnQueue_head_CL (notification_lift (the (cslift s \<^bsup>s\<^esup>ntfnPtr)))) \<and>
@@ -97,7 +92,9 @@ abbreviation
           \<and> (cslift s :: asid_pool_C typ_heap) = cslift t
           \<and> (cslift s :: pte_C typ_heap) = cslift t
           \<and> (cslift s :: user_data_C typ_heap) = cslift t
-          \<and> (cslift s :: user_data_device_C typ_heap) = cslift t"
+          \<and> (cslift s :: user_data_device_C typ_heap) = cslift t
+          \<and> (cslift s :: syscall_fault_message_global_C typ_heap) = cslift t
+          \<and> (cslift s :: exception_fault_message_global_C typ_heap) = cslift t"
 
 lemma tcbEPDequeue_spec:
   "\<forall>s queue. \<Gamma> \<turnstile> \<lbrace>s. \<exists>t. (t, s) \<in> rf_sr

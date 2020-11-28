@@ -428,6 +428,9 @@ lemma liftt_if:
   apply (simp add: lift_t_if split_def cong: if_cong)
   done
 
+lemma lift_t_None_iff:
+  "lift_t g hrs p = None \<longleftrightarrow> \<not> hrs_htd hrs,g \<Turnstile>\<^sub>t p"
+  by (simp add: liftt_if hrs_htd_def)
 
 (* pspace updates *)
 

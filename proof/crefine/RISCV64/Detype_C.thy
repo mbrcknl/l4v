@@ -1531,6 +1531,57 @@ lemma zero_ranges_are_zero_typ_region_bytes:
   apply (clarsimp simp: region_actually_is_bytes'_def typ_region_bytes_def hrs_htd_update)
   done
 
+context
+  fixes glob :: "'glob::mem_type ptr"
+  fixes ptr bits
+  assumes aligned_ptr_refs: "is_aligned ptr bits \<and> kernel_data_refs \<inter> {ptr ..+ 2^bits} = {}"
+  assumes in_kernel_data: "in_kernel_data glob"
+  assumes neq_byte: "typ_uinfo_t TYPE('glob) \<noteq> typ_uinfo_t TYPE (word8)"
+begin
+
+lemma h_t_valid_in_kernel_data_typ_region_bytes:
+  "typ_region_bytes ptr bits htd \<Turnstile>\<^sub>t glob \<longleftrightarrow> htd \<Turnstile>\<^sub>t glob"
+  using in_kernel_data aligned_ptr_refs
+  by (clarsimp simp: in_kernel_data_def h_t_valid_typ_region_bytes[OF neq_byte]
+                     upto_intvl_eq disjoint_subset)
+
+lemma clift_in_kernel_data_typ_region_bytes:
+  "clift (hrs_htd_update (typ_region_bytes ptr bits) cheap) glob = clift cheap glob"
+  by (cases "clift cheap glob"; simp
+      ; simp add: lift_t_None_iff lift_t_Some_iff hrs_htd_update
+                  h_t_valid_in_kernel_data_typ_region_bytes)
+
+end
+
+lemma fault_message_relation_typ_region_bytes:
+  fixes fmi :: "('struct::mem_type, 'len::finite) fault_message_info"
+  assumes p: "is_aligned ptr bits \<and> kernel_data_refs \<inter> {ptr ..+ 2^bits} = {}"
+  assumes d: "in_kernel_data (fmi_ptr fmi)"
+  assumes t: "typ_uinfo_t TYPE('struct) \<noteq> typ_uinfo_t TYPE (word8)"
+  shows "fault_message_relation_guarded fmi (clift (hrs_htd_update (typ_region_bytes ptr bits) cheap))
+         = fault_message_relation_guarded fmi (clift cheap)"
+  using assms
+  by (clarsimp simp: fault_message_relation_guarded_def fault_message_relation_unguarded_def
+                     clift_in_kernel_data_typ_region_bytes[OF p d t])
+
+lemma aligned_range_no_refs_equiv:
+  "is_aligned ptr bits \<and> R \<inter> {ptr ..+ 2^bits} = {}
+   \<longleftrightarrow> is_aligned ptr bits \<and> R \<inter> {ptr .. ptr + 2^bits - 1} = {}"
+  by (auto simp add: atomize_eq upto_intvl_eq)
+
+lemmas h_t_valid_in_kernel_data_typ_region_bytes_intvl
+  = h_t_valid_in_kernel_data_typ_region_bytes[OF conjI]
+lemmas h_t_valid_in_kernel_data_typ_region_bytes_alam
+  = h_t_valid_in_kernel_data_typ_region_bytes[OF aligned_range_no_refs_equiv[THEN iffD2, OF conjI]]
+lemmas clift_in_kernel_data_typ_region_bytes_intvl
+  = clift_in_kernel_data_typ_region_bytes[OF conjI]
+lemmas clift_in_kernel_data_typ_region_bytes_alam
+  = clift_in_kernel_data_typ_region_bytes[OF aligned_range_no_refs_equiv[THEN iffD2, OF conjI]]
+lemmas fault_message_relation_typ_region_bytes_intvl
+  = fault_message_relation_typ_region_bytes[OF conjI]
+lemmas fault_message_relation_typ_region_bytes_alam
+  = fault_message_relation_typ_region_bytes[OF aligned_range_no_refs_equiv[THEN iffD2, OF conjI]]
+
 lemma deleteObjects_ccorres':
   notes if_cong[cong]
   shows
@@ -1729,21 +1780,6 @@ proof -
     done
 
   moreover
-  {
-    assume "s' \<Turnstile>\<^sub>c riscvKSGlobalPT_Ptr"
-    moreover
-    from sr ptr_refs have "ptr_span riscvKSGlobalPT_Ptr
-      \<inter> {ptr..ptr + 2 ^ bits - 1} = {}"
-      by (fastforce simp: rf_sr_def cstate_relation_def Let_def)
-    ultimately
-    have "hrs_htd (hrs_htd_update (typ_region_bytes ptr bits) (t_hrs_' (globals s'))) \<Turnstile>\<^sub>t riscvKSGlobalPT_Ptr"
-      using al wb
-      apply (cases "t_hrs_' (globals s')")
-      apply (simp add: hrs_htd_update_def hrs_htd_def h_t_valid_typ_region_bytes upto_intvl_eq)
-      done
-  }
-
-  moreover
   have h2ud_eq:
        "heap_to_user_data (?psu (ksPSpace s))
                           (?mmu (underlying_memory (ksMachineState s))) =
@@ -1913,16 +1949,6 @@ proof -
                   if_flip[symmetric, where F=None])
     done
 
-   moreover from sr have
-     "h_t_valid (typ_region_bytes ptr bits (hrs_htd (t_hrs_' (globals s'))))
-       c_guard intStateIRQNode_array_Ptr"
-    apply (clarsimp simp: rf_sr_def cstate_relation_def Let_def)
-    apply (simp add: h_t_valid_typ_region_bytes)
-    apply (simp add: upto_intvl_eq al)
-    apply (rule disjoint_subset[OF _ ptr_refs])
-    apply (simp add: cinterrupt_relation_def cte_level_bits_def)
-    done
-
   ultimately
   show "(?t, globals_update
                (%x. ghost'state_'_update (gs_clear_region ptr bits)
@@ -1933,7 +1959,9 @@ proof -
                   carch_state_relation_def
                   cmachine_state_relation_def
                   hrs_htd_update htd_safe_typ_region_bytes
-                  zero_ranges_are_zero_typ_region_bytes)
+                  zero_ranges_are_zero_typ_region_bytes
+                  h_t_valid_in_kernel_data_typ_region_bytes_alam[OF al ptr_refs]
+                  fault_message_relation_typ_region_bytes_alam[OF al ptr_refs])
 qed
 
 abbreviation (input)

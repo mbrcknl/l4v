@@ -996,6 +996,30 @@ lemmas ccorres_mapM_x_while'
     = ccorres_mapM_x_while_gen' [OF _ _ _ _ _ i_xf_for_sequence, folded word_bits_def,
                                  where j=1, simplified]
 
+(* FIXME: move *)
+lemma ccorres_mapM_x_while_genQ':
+  fixes xf :: "globals myvars \<Rightarrow> ('c :: len) word"
+  assumes "\<And>n. n < length xs \<Longrightarrow> ccorres dc xfdc (F (n * j)) ({s. xf s = of_nat (i + n * j)} \<inter> Q) hs (f (xs ! n)) body"
+  assumes "\<And>n. P n = (n < of_nat (i + length xs * j))"
+  assumes "\<forall>s. xf s < of_nat (i + length xs * j)
+        \<longrightarrow> \<Gamma>\<turnstile>\<^bsub>/UNIV\<^esub> ({s} \<inter> Q) body {t. xf t = xf s \<and> xf_update (\<lambda>x. xf t + of_nat j) t \<in> Q}"
+  assumes "\<And>n. Suc n < length xs \<Longrightarrow> \<lbrace>F (n * j)\<rbrace> f (xs ! n) \<lbrace>\<lambda>_. F (Suc n * j)\<rbrace>"
+  assumes "i + length xs * j < 2 ^ len_of TYPE('c)"
+  assumes "\<forall>s f. xf (xf_update f s) = f (xf s) \<and> globals (xf_update f s) = globals s"
+  assumes "j > 0"
+  shows "ccorres (\<lambda>rv i'. i' = of_nat (i + length xs * j)) xf (\<lambda>s. P 0 \<longrightarrow> F 0 s) ({s. xf s = of_nat i} \<inter> Q) hs
+                 (mapM_x f xs)
+                 (While {s. P (xf s)} (body;; Basic (\<lambda>s. xf_update (\<lambda>_. xf s + of_nat j) s)))"
+  unfolding mapM_x_def
+  apply (rule ccorres_rel_imp)
+   apply (rule ccorres_sequence_x_while_genQ'[where xf_update=xf_update])
+         apply (simp add: assms[simplified])+
+  done
+
+lemmas ccorres_mapM_x_whileQ'
+    = ccorres_mapM_x_while_genQ'[OF _ _ _ _ _ i_xf_for_sequence, folded word_bits_def,
+                                 where j=1, simplified]
+
 lemma ccorres_zipWithM_x_while_genQ:
   fixes xf :: "globals myvars \<Rightarrow> ('c :: len) word"
   assumes rl: "\<forall>n. n < length xs \<and> n < length ys \<longrightarrow> ccorres dc xfdc (F (n * j)) ({s. xf s = of_nat n * of_nat j} \<inter> Q)
