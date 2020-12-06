@@ -2179,6 +2179,18 @@ lemma rf_sr_cstate_relation:
   "(s, s') \<in> rf_sr \<Longrightarrow> cstate_relation s (globals s')"
   by (simp add: rf_sr_def)
 
+lemma cmap_relation_ht_valid:
+  assumes "cmap_relation as (clift hrs) PTR('t::c_type) rel"
+  assumes p_in_as: "p \<in> dom as"
+  shows "hrs_htd hrs \<Turnstile>\<^sub>t PTR('t) p"
+  using assms
+  apply (clarsimp simp: cmap_relation_def)
+  apply (thin_tac "Ball _ _")
+  apply (drule equalityD1)
+  apply (drule subsetD[where c="PTR('t) p"], rule imageI[OF p_in_as])
+  apply (clarsimp simp: typ_heap_simps)
+  done
+
 \<comment> \<open>Fault messages\<close>
 
 lemma fault_message_info_simps:
@@ -2188,6 +2200,10 @@ lemma fault_message_info_simps:
     and fault_message_info_upd_simp: "fmi_upd fmi = upd"
     and fault_message_info_ptr_simp: "fmi_ptr fmi = ptr"
   by (auto simp: def)
+
+lemmas fault_message_info_all_simps[simp]
+  = fault_message_info_simps[OF syscall_fault_message_info_def]
+    fault_message_info_simps[OF exception_fault_message_info_def]
 
 lemma fault_message_relation_unguarded:
   assumes "fault_message_length_relation fmi"
@@ -2244,6 +2260,33 @@ lemma cstate_relation_exception_fault_message_relation_unguarded:
    \<Longrightarrow> fault_message_relation_unguarded exception_fault_message_info (clift (t_hrs_' s'))"
   by (simp add: cstate_relation_def Let_def
                 fault_message_relation_unguarded[OF exception_fault_message_length_relation])
+
+lemmas rf_sr_exception_fault_message_relation_unguarded
+  = cstate_relation_exception_fault_message_relation_unguarded[OF rf_sr_cstate_relation]
+lemmas rf_sr_syscall_fault_message_relation_unguarded
+  = cstate_relation_syscall_fault_message_relation_unguarded[OF rf_sr_cstate_relation]
+
+lemmas rf_sr_fault_message_relation_unguarded_lemmas
+  = rf_sr_exception_fault_message_relation_unguarded
+    rf_sr_syscall_fault_message_relation_unguarded
+
+lemma fault_message_relation_h_t_valid_global:
+  assumes fmi: "fault_message_relation_unguarded fmi (clift hrs)"
+  assumes ptr: "p = fmi_ptr fmi"
+  shows "hrs_htd hrs \<Turnstile>\<^sub>t p"
+  using fmi unfolding ptr
+  by (clarsimp simp: fault_message_relation_unguarded_def typ_heap_simps)
+
+lemma fault_message_relation_h_t_valid_array:
+  fixes fmi :: "('struct::mem_type, 'len::array_max_count) fault_message_info"
+  assumes fmi: "fault_message_relation_unguarded fmi (clift hrs)"
+  assumes ti: "field_ti TYPE('struct) [''msg_C'']
+               = Some (adjust_ti (typ_info_t TYPE(machine_word['len])) (fmi_msg fmi) (fmi_upd fmi \<circ> K))"
+  assumes uinfo: "export_uinfo (adjust_ti (typ_info_t TYPE(machine_word['len])) (fmi_msg fmi) (fmi_upd fmi \<circ> K))
+                  = export_uinfo (typ_info_t TYPE(machine_word['len]))"
+  shows "hrs_htd hrs \<Turnstile>\<^sub>t PTR(machine_word['len]) &(fmi_ptr fmi\<rightarrow>[''msg_C''])"
+  by (rule h_t_valid_field[where 'b="machine_word['len]"
+                           , OF fault_message_relation_h_t_valid_global[OF fmi refl] ti uinfo])
 
 end
 end

@@ -1347,4 +1347,23 @@ lemma tcbSchedEnqueue_queued_queues_inv:
   apply normalise_obj_at'
   done
 
+(* FIXME: move fault_message patch begin *)
+
+lemma mapM_cong: "\<lbrakk> \<forall>x. elem x xs \<longrightarrow> f x = g x \<rbrakk> \<Longrightarrow> mapM_x f xs =  mapM_x g xs"
+  by (induction xs, (simp add: mapM_x_Nil mapM_x_Cons)+)
+
+lemma hrs_mem_update_heap_update_hrs_mem:
+  "hrs_mem_update (heap_update p v) = (\<lambda>hrs. hrs_mem_update (\<lambda>_. heap_update p v (hrs_mem hrs)) hrs)"
+  by (auto simp add: hrs_mem_update_def hrs_mem_def split: prod.splits)
+
+lemma option_to_0_None:
+  "p \<noteq> Some 0 \<Longrightarrow> option_to_0 p \<noteq> 0 \<longleftrightarrow> p \<noteq> None"
+  by (auto simp: option_to_0_def split: option.splits)
+
+lemma mask_eq_iff_unat:
+  "(w && mask n = w) = (unat w < 2 ^ n)"
+  by (simp add: mask_eq_iff unat_def)
+
+(* FIXME: move fault_message patch end *)
+
 end

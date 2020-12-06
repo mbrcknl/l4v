@@ -47,6 +47,14 @@ abbreviation "machine_word_Ptr \<equiv> Ptr :: addr \<Rightarrow> machine_word p
 abbreviation "tcb_cnode_Ptr \<equiv> Ptr :: addr \<Rightarrow> tcb_cnode_array ptr"
 abbreviation "registers_Ptr \<equiv> Ptr :: addr \<Rightarrow> registers_array ptr"
 
+type_synonym user_data_words_len = 512
+definition user_data_words_len_bits :: nat where
+  "user_data_words_len_bits = 9"
+
+lemma card_register:
+  "CARD(register) = 35"
+  by (simp add: card_UNIV_length_enum enum_register)
+
 lemma halt_spec:
   "Gamma \<turnstile> {} Call halt_'proc {}"
   apply (rule hoare_complete)

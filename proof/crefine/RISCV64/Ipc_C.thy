@@ -1457,46 +1457,6 @@ lemma asUser_obj_at_elsewhere:
   apply clarsimp
   done
 
-lemma mapM_cong: "\<lbrakk> \<forall>x. elem x xs \<longrightarrow> f x = g x \<rbrakk> \<Longrightarrow> mapM_x f xs =  mapM_x g xs"
-  by (induction xs, (simp add: mapM_x_Nil mapM_x_Cons)+)
-
-lemma card_register:
-  "CARD(register) = 35"
-  by (simp add: card_UNIV_length_enum enum_register)
-
-(* FIXME: move *)
-type_synonym user_data_words_len = 512
-definition user_data_words_len_bits :: nat where
-  "user_data_words_len_bits = 9"
-
-(* FIXME: move *)
-lemma hrs_mem_update_heap_update_hrs_mem:
-  "hrs_mem_update (heap_update p v) = (\<lambda>hrs. hrs_mem_update (\<lambda>_. heap_update p v (hrs_mem hrs)) hrs)"
-  by (auto simp add: hrs_mem_update_def hrs_mem_def split: prod.splits)
-
-(* FIXME: move *)
-lemma option_to_0_None:
-  "p \<noteq> Some 0 \<Longrightarrow> option_to_0 p \<noteq> 0 \<longleftrightarrow> p \<noteq> None"
-  by (auto simp: option_to_0_def split: option.splits)
-
-(* FIXME: move *)
-lemma cmap_relation_ht_valid:
-  assumes "cmap_relation as (clift hrs) PTR('t::c_type) rel"
-  assumes p_in_as: "p \<in> dom as"
-  shows "hrs_htd hrs \<Turnstile>\<^sub>t PTR('t) p"
-  using assms
-  apply (clarsimp simp: cmap_relation_def)
-  apply (thin_tac "Ball _ _")
-  apply (drule equalityD1)
-  apply (drule subsetD[where c="PTR('t) p"], rule imageI[OF p_in_as])
-  apply (clarsimp simp: typ_heap_simps)
-  done
-
-(* FIXME: move *)
-lemma mask_eq_iff_unat:
-  "(w && mask n = w) = (unat w < 2 ^ n)"
-  by (simp add: mask_eq_iff unat_def)
-
 lemma copyMRsFault_ccorres:
   fixes fmi :: "('struct::mem_type, 'len::array_max_count) fault_message_info"
   shows "ccorres dc xfdc
@@ -1783,38 +1743,6 @@ proof -
      apply (subst upt_rec, simp)+
     done
 qed
-
-(* FIXME: move, rename *)
-lemmas fault_message_info_all_simps[simp]
-  = fault_message_info_simps[OF syscall_fault_message_info_def]
-    fault_message_info_simps[OF exception_fault_message_info_def]
-
-lemmas rf_sr_exception_fault_message_relation_unguarded
-  = cstate_relation_exception_fault_message_relation_unguarded[OF rf_sr_cstate_relation]
-lemmas rf_sr_syscall_fault_message_relation_unguarded
-  = cstate_relation_syscall_fault_message_relation_unguarded[OF rf_sr_cstate_relation]
-
-lemmas rf_sr_fault_message_relation_unguarded_lemmas
-  = rf_sr_exception_fault_message_relation_unguarded
-    rf_sr_syscall_fault_message_relation_unguarded
-
-lemma fault_message_relation_h_t_valid_global:
-  assumes fmi: "fault_message_relation_unguarded fmi (clift hrs)"
-  assumes ptr: "p = fmi_ptr fmi"
-  shows "hrs_htd hrs \<Turnstile>\<^sub>t p"
-  using fmi unfolding ptr
-  by (clarsimp simp: fault_message_relation_unguarded_def typ_heap_simps)
-
-lemma fault_message_relation_h_t_valid_array:
-  fixes fmi :: "('struct::mem_type, 'len::array_max_count) fault_message_info"
-  assumes fmi: "fault_message_relation_unguarded fmi (clift hrs)"
-  assumes ti: "field_ti TYPE('struct) [''msg_C'']
-               = Some (adjust_ti (typ_info_t TYPE(machine_word['len])) (fmi_msg fmi) (fmi_upd fmi \<circ> K))"
-  assumes uinfo: "export_uinfo (adjust_ti (typ_info_t TYPE(machine_word['len])) (fmi_msg fmi) (fmi_upd fmi \<circ> K))
-                  = export_uinfo (typ_info_t TYPE(machine_word['len]))"
-  shows "hrs_htd hrs \<Turnstile>\<^sub>t PTR(machine_word['len]) &(fmi_ptr fmi\<rightarrow>[''msg_C''])"
-  by (rule h_t_valid_field[where 'b="machine_word['len]"
-                           , OF fault_message_relation_h_t_valid_global[OF fmi refl] ti uinfo])
 
 lemma setMRs_fault_ccorres [corres]:
   "ccorres (\<lambda>r r'. r = r' && mask msgLengthBits) ret__unsigned_long_'
