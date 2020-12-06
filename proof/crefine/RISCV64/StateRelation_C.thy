@@ -723,14 +723,16 @@ abbreviation intStateIRQNode_Ptr :: "cte_C ptr" where
 
 \<comment> \<open>Fault messages\<close>
 
+type_synonym syscall_fault_message_len = 10
 abbreviation syscall_fault_message_global_Ptr :: "syscall_fault_message_global_C ptr" where
   "syscall_fault_message_global_Ptr \<equiv> Ptr (symbol_table ''syscall_fault_message'')"
-abbreviation syscall_fault_message_Ptr :: "(64 word[10]) ptr" where
+abbreviation syscall_fault_message_Ptr :: "(64 word[syscall_fault_message_len]) ptr" where
   "syscall_fault_message_Ptr \<equiv> Ptr &(syscall_fault_message_global_Ptr\<rightarrow>[''msg_C''])"
 
+type_synonym exception_fault_message_len = 2
 abbreviation exception_fault_message_global_Ptr :: "exception_fault_message_global_C ptr" where
   "exception_fault_message_global_Ptr \<equiv> Ptr (symbol_table ''exception_fault_message'')"
-abbreviation exception_fault_message_Ptr :: "(64 word[2]) ptr" where
+abbreviation exception_fault_message_Ptr :: "(64 word[exception_fault_message_len]) ptr" where
   "exception_fault_message_Ptr \<equiv> Ptr &(exception_fault_message_global_Ptr\<rightarrow>[''msg_C''])"
 
 definition syscall_fault_message_info  :: "(syscall_fault_message_global_C, 10) fault_message_info" where

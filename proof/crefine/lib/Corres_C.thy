@@ -1055,6 +1055,10 @@ lemmas ccorres_zipWithM_x_while
     = ccorres_zipWithM_x_while_gen[OF _ _ _ _ _ i_xf_for_sequence, folded word_bits_def,
                                    where j=1, simplified]
 
+lemmas ccorres_zipWithM_x_whileQ
+    = ccorres_zipWithM_x_while_genQ[OF _ _ _ _ _ i_xf_for_sequence, folded word_bits_def,
+                                    where j=1, simplified]
+
 end
 
 lemma ccorres_sequenceE_while_gen_either_way:

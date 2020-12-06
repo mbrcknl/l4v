@@ -2140,11 +2140,6 @@ lemma tcb_and_not_mask_canonical:
 lemmas tcb_ptr_sign_extend_canonical =
       tcb_and_not_mask_canonical[where n=0, simplified mask_def objBits_simps', simplified]
 
-(* FIXME: move up to TypHeap? *)
-lemma lift_t_Some_iff:
-  "lift_t g hrs p = Some v \<longleftrightarrow> hrs_htd hrs, g \<Turnstile>\<^sub>t p \<and> h_val (hrs_mem hrs) p = v"
-  unfolding hrs_htd_def hrs_mem_def by (cases hrs) (auto simp: lift_t_if)
-
 context
   fixes p :: "'a::mem_type ptr"
   fixes q :: "'b::c_type ptr"

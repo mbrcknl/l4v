@@ -3558,50 +3558,6 @@ lemma Arch_getSanitiseRegisterInfo_ccorres:
   done
 
 (* FIXME: move *)
-lemmas ccorres_zipWithM_x_whileQ
-    = ccorres_zipWithM_x_while_genQ[OF _ _ _ _ _ i_xf_for_sequence, folded word_bits_def,
-                                    where j=1, simplified]
-
-(* FIXME: move *)
-type_synonym exception_fault_message_len = 2
-type_synonym syscall_fault_message_len = 10
-
-(* FIXME: move *)
-lemma h_t_valid_Array_element'':
-  assumes v: "htd \<Turnstile>\<^sub>t PTR_COERCE('a::mem_type \<rightarrow> 'a['len::finite]) p"
-  assumes n: "n < CARD('len)"
-  shows "htd \<Turnstile>\<^sub>t (p +\<^sub>p n)"
-  using n h_t_valid_Array_element[where n=n, OF v] by simp
-
-(* FIXME: move *)
-lemma h_t_valid_Array_element_simp:
-  assumes v: "htd \<Turnstile>\<^sub>t PTR('a::mem_type['len::finite]) p"
-  assumes n: "n < CARD('len)"
-  assumes s: "s = of_nat (size_of (TYPE('a)))"
-  shows "htd \<Turnstile>\<^sub>t PTR('a) (p + of_nat n * s)"
-  unfolding s
-  by (rule h_t_valid_Array_element''[where p="PTR('a) p" for p, simplified, OF v n])
-
-(* FIXME: move *)
-lemma clift_Array_element:
-  assumes v: "clift hrs (PTR_COERCE('a::mem_type \<rightarrow> 'a['len::array_max_count]) p) = Some v"
-  assumes n: "n < CARD('len)"
-  shows "clift hrs (p +\<^sub>p n) = Some (v.[n])"
-  using assms
-  using h_t_valid_Array_element''[where 'a='a and 'len='len and p=p and htd="hrs_htd hrs", OF _ n]
-  using heap_access_Array_element[where 'a='a and 'b='len and hp="hrs_mem hrs", simplified, OF n]
-  unfolding lift_t_Some_iff by clarsimp
-
-(* FIXME: move *)
-lemma clift_Array_element_simp:
-  assumes v: "clift hrs (PTR('a::mem_type['len::array_max_count]) p) = Some v"
-  assumes n: "n < CARD('len)"
-  assumes s: "s = of_nat (size_of (TYPE('a)))"
-  shows "clift hrs (PTR('a) (p + of_nat n * s)) = Some (v.[n])"
-  unfolding s
-  by (rule clift_Array_element[where p="PTR('a) p" for p, simplified, OF v n])
-
-(* FIXME: move *)
 lemma fault_message_clift_relation_word_ptrE:
   fixes fmi :: "('struct::mem_type, 'len::array_max_count) fault_message_info"
   assumes r: "fault_message_relation_unguarded fmi (clift hrs)"
