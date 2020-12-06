@@ -3557,22 +3557,6 @@ lemma Arch_getSanitiseRegisterInfo_ccorres:
   apply (simp add: false_def)
   done
 
-(* FIXME: move *)
-lemma fault_message_clift_relation_word_ptrE:
-  fixes fmi :: "('struct::mem_type, 'len::array_max_count) fault_message_info"
-  assumes r: "fault_message_relation_unguarded fmi (clift hrs)"
-  assumes i: "n < CARD('len)"
-  assumes t: "field_ti TYPE('struct) [''msg_C'']
-              = Some (adjust_ti (typ_info_t TYPE(machine_word['len])) (fmi_msg fmi) (fmi_upd fmi \<circ> K))"
-  assumes u: "export_uinfo (adjust_ti (typ_info_t TYPE(machine_word['len])) (fmi_msg fmi) (fmi_upd fmi \<circ> K))
-              = export_uinfo (typ_info_t TYPE(machine_word['len]))"
-  shows "clift hrs (machine_word_Ptr &(fmi_ptr fmi\<rightarrow>[''msg_C'']) +\<^sub>p n)
-         = Some (register_from_H (fmi_reg fmi ! n))"
-  apply (rule fault_message_relationE[OF r i])
-  apply (drule clift_field[where 'b="machine_word['len]", OF _ t u], simp)
-  apply (drule clift_Array_element_simp[OF _ i refl])
-  by simp
-
 lemma copyMRsFaultReply_ccorres_exception:
   fixes fmi :: "('struct::mem_type, 'len::array_max_count) fault_message_info"
   shows "ccorres dc xfdc
