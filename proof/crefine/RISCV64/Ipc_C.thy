@@ -1518,8 +1518,8 @@ lemma copyMRsFault_ccorres:
            apply (clarsimp simp: msgRegisters_ccorres n_msgRegisters_def
                                  obj_at_simps atcbContextGet_def unat_of_nat)
            apply (rule_tac i=n in fault_message_relationE, assumption+)
-           apply (frule (2) h_val_field_clift'[symmetric])
-           apply (frule (2) h_t_valid_field[OF h_t_valid_clift])
+           apply (frule (2) h_val_field_clift'[symmetric, OF _ fault_message_field_tiD])
+           apply (frule (2) h_t_valid_field[OF h_t_valid_clift fault_message_field_tiD])
            apply (frule (1) h_t_valid_Array_element'[OF _ le0])
            apply (simp add: heap_access_Array_element array_ptr_valid_array_assertionI
                             word_of_nat_less)
