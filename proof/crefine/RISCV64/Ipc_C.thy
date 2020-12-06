@@ -1484,10 +1484,7 @@ lemma copyMRsFault_ccorres:
                                 be instantiated such that the obligations will simplify away.\<close>
                             \<and> typ_uinfo_t TYPE('struct) \<bottom>\<^sub>t typ_uinfo_t TYPE(tcb_C)
                             \<and> typ_uinfo_t TYPE('struct) \<bottom>\<^sub>t typ_uinfo_t TYPE(user_data_C)
-                            \<and> field_ti TYPE('struct) [''msg_C'']
-                               = Some (adjust_ti (typ_info_t TYPE(machine_word['len])) (fmi_msg fmi) (fmi_upd fmi \<circ> K))
-                            \<and> export_uinfo (adjust_ti (typ_info_t TYPE(machine_word['len])) (fmi_msg fmi) (fmi_upd fmi \<circ> K))
-                               = export_uinfo (typ_info_t TYPE(machine_word['len]))\<rbrace>)
+                            \<and> fault_message_field_ti fmi\<rbrace>)
                  hs
                  (mapM_x (\<lambda>(x, y). setMR receiver recvBuffer x y) (zip [0..<120] msg))
                  (Call copyMRsFault_'proc)"
