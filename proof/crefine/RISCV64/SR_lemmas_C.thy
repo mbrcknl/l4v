@@ -2205,9 +2205,6 @@ lemma fault_message_relation_unguarded:
   shows "fault_message_relation_guarded fmi ch \<longleftrightarrow> fault_message_relation_unguarded fmi ch"
   using assms by (auto simp: fault_message_relation_guarded_def)
 
-lemmas fault_message_relation_unguarded_defs
-  = fault_message_relation_unguarded fault_message_relation_unguarded_def
-
 lemma fault_message_relation_unguarded_length:
   "fault_message_relation_unguarded fmi ch \<Longrightarrow> fault_message_length_relation fmi"
   apply (clarsimp simp: fault_message_relation_unguarded_def fault_message_length_relation_def)
@@ -2278,47 +2275,58 @@ lemma syscall_fault_message_field_ti[simp, intro!]:
 
 lemma fault_message_relation_h_t_valid_global:
   assumes fmi: "fault_message_relation_unguarded fmi (clift hrs)"
-  assumes ptr: "p = fmi_ptr fmi"
+  assumes p: "p = fmi_ptr fmi"
   shows "hrs_htd hrs \<Turnstile>\<^sub>t p"
-  using fmi unfolding ptr
+  using fmi unfolding p
   by (clarsimp simp: fault_message_relation_unguarded_def typ_heap_simps)
 
 lemma fault_message_relation_h_t_valid_array:
   fixes fmi :: "('struct::mem_type, 'len::array_max_count) fault_message_info"
   assumes fmi: "fault_message_relation_unguarded fmi (clift hrs)"
   assumes ti: "fault_message_field_ti fmi"
-  shows "hrs_htd hrs \<Turnstile>\<^sub>t PTR(machine_word['len]) &(fmi_ptr fmi\<rightarrow>[''msg_C''])"
+  assumes p: "p = fmi_ptr fmi"
+  shows "hrs_htd hrs \<Turnstile>\<^sub>t PTR(machine_word['len]) &(p\<rightarrow>[''msg_C''])"
+  unfolding p
   by (rule h_t_valid_field[where 'b="machine_word['len]"
                            , OF fault_message_relation_h_t_valid_global[OF fmi refl]
                                 fault_message_field_tiD[OF ti]])
 
-lemma fault_message_relationE:
-  fixes fmi :: "('struct::mem_type, 'len::finite) fault_message_info"
-  assumes r: "fault_message_relation_unguarded fmi ch"
-  assumes i: "i < CARD('len)"
-  assumes m: "\<And>c_msg. \<lbrakk> ch (fmi_ptr fmi) = Some c_msg;
-                         fmi_msg fmi c_msg.[i] = register_from_H (fmi_reg fmi ! i) \<rbrakk>
-                       \<Longrightarrow> P"
-  shows P
-  using r i fault_message_relation_unguarded_length[OF r]
+lemma fault_message_relation_array_assertion:
+  fixes fmi :: "('struct::mem_type, 'len::array_max_count) fault_message_info"
+  assumes fmi: "fault_message_relation_unguarded fmi (clift hrs)"
+  assumes ti: "fault_message_field_ti fmi"
+  assumes p: "p = fmi_ptr fmi"
+  assumes n: "n \<le> CARD('len)"
+  shows "array_assertion (machine_word_Ptr &(p\<rightarrow>[''msg_C''])) n (hrs_htd hrs)"
+  apply (rule array_ptr_valid_array_assertionI[OF _ _ n])
+  apply (rule fault_message_relation_h_t_valid_array[OF fmi ti p])
+  by simp
+
+lemma fault_message_relation_clift_word_ptr[simplified]:
+  fixes fmi :: "('struct::mem_type, 'len::array_max_count) fault_message_info"
+  assumes fmi: "fault_message_relation_unguarded fmi (clift hrs)"
+  assumes ti: "fault_message_field_ti fmi"
+  assumes p: "p = fmi_ptr fmi"
+  assumes n: "n < CARD('len)"
+  shows "clift hrs (machine_word_Ptr &(p\<rightarrow>[''msg_C'']) +\<^sub>p n)
+         = Some (register_from_H (fmi_reg fmi ! n))"
+  unfolding p using fmi n fault_message_relation_unguarded_length[OF fmi]
   apply (clarsimp simp: fault_message_relation_unguarded_def)
-  apply (erule m)
-  apply (drule arg_cong[where f="\<lambda>xs. xs ! i"])
+  apply (drule arg_cong[where f="\<lambda>xs. xs ! n"])
+  apply (drule clift_field[where 'b="machine_word['len]"
+                           , OF _ fault_message_field_tiD[OF ti]], simp)
+  apply (drule clift_Array_element_simp[OF _ n refl])
   apply (simp add: fault_message_length_relationD list_array_nth)
   done
 
-lemma fault_message_clift_relation_word_ptrE:
+lemma fault_message_relation_h_t_valid_word_ptr[simplified]:
   fixes fmi :: "('struct::mem_type, 'len::array_max_count) fault_message_info"
-  assumes r: "fault_message_relation_unguarded fmi (clift hrs)"
-  assumes t: "fault_message_field_ti fmi"
-  assumes i: "n < CARD('len)"
-  shows "clift hrs (machine_word_Ptr &(fmi_ptr fmi\<rightarrow>[''msg_C'']) +\<^sub>p n)
-         = Some (register_from_H (fmi_reg fmi ! n))"
-  apply (rule fault_message_relationE[OF r i])
-  apply (drule clift_field[where 'b="machine_word['len]"
-                           , OF _ fault_message_field_tiD[OF t]], simp)
-  apply (drule clift_Array_element_simp[OF _ i refl])
-  by simp
+  assumes fmi: "fault_message_relation_unguarded fmi (clift hrs)"
+  assumes ti: "fault_message_field_ti fmi"
+  assumes p: "p = fmi_ptr fmi"
+  assumes n: "n < CARD('len)"
+  shows "hrs_htd hrs \<Turnstile>\<^sub>t (machine_word_Ptr &(p\<rightarrow>[''msg_C'']) +\<^sub>p n)"
+  using h_t_valid_clift[OF fault_message_relation_clift_word_ptr[OF fmi ti p n]] by simp
 
 end
 end
