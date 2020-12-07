@@ -1432,23 +1432,6 @@ lemma ccorres_add_getRegister:
   apply fastforce
   done
 
-lemma user_getreg_rv:
-  "\<lbrace>obj_at' (\<lambda>tcb. P ((user_regs o atcbContextGet o tcbArch) tcb r)) t\<rbrace> asUser t (getRegister r) \<lbrace>\<lambda>rv s. P rv\<rbrace>"
-  apply (simp add: asUser_def split_def)
-  apply (wp threadGet_wp)
-  apply (clarsimp simp: obj_at'_def projectKOs getRegister_def in_monad atcbContextGet_def)
-  done
-
-lemma exceptionMessage_ccorres:
-  "n < unat n_exceptionMessage
-      \<Longrightarrow> register_from_H (RISCV64_H.exceptionMessage ! n)
-             = index exceptionMessageC n"
-  apply (simp add: exceptionMessageC_def RISCV64_H.exceptionMessage_def
-                   RISCV64.exceptionMessage_def MessageID_Exception_def)
-  by (simp add: Arrays.update_def n_exceptionMessage_def fcp_beta nth_Cons'
-                fupdate_def C_register_defs
-         split: if_split) (* long *)
-
 lemma asUser_obj_at_elsewhere:
   "\<lbrace>obj_at' (P :: tcb \<Rightarrow> bool) t' and (\<lambda>_. t \<noteq> t')\<rbrace> asUser t m \<lbrace>\<lambda>rv. obj_at' P t'\<rbrace>"
   apply (rule hoare_gen_asm')
@@ -1516,13 +1499,8 @@ lemma copyMRsFault_ccorres:
              apply (wp user_getreg_rv)
             apply vcg
            apply (clarsimp simp: msgRegisters_ccorres n_msgRegisters_def
-                                 obj_at_simps atcbContextGet_def unat_of_nat)
-           apply (rule_tac i=n in fault_message_relationE, assumption+)
-           apply (frule (2) h_val_field_clift'[symmetric, OF _ fault_message_field_tiD])
-           apply (frule (2) h_t_valid_field[OF h_t_valid_clift fault_message_field_tiD])
-           apply (frule (1) h_t_valid_Array_element'[OF _ le0])
-           apply (simp add: heap_access_Array_element array_ptr_valid_array_assertionI
-                            word_of_nat_less)
+                                 obj_at_simps atcbContextGet_def unat_of_nat
+                                 fault_message_heap_simps word_of_nat_less)
           apply (simp add: n_msgRegisters_def min_def split: if_splits)
          apply (clarsimp, vcg, simp add: clift_heap_update_same typ_heap_simps)
         apply (simp add: setMR_def, wpsimp wp: asUser_obj_at_elsewhere)
@@ -1535,7 +1513,7 @@ lemma copyMRsFault_ccorres:
        apply (clarsimp simp: drop_zip simp del: upt_rec_numeral
                       dest!: in_set_zip1
                      split: if_splits option.splits)
-      apply (simp add: mapM_x_return[where w="()"])
+      apply simp
       apply (rule ccorres_return_Skip)
      apply (rule ccorres_rel_imp[where r=dc, OF _ dc_simp])
      apply (simp add: option_to_0_def split: option.splits)
@@ -1562,7 +1540,9 @@ lemma copyMRsFault_ccorres:
            apply (wpsimp wp: user_getreg_rv)
           apply vcg
          apply (clarsimp simp: msgRegisters_ccorres n_msgRegisters_def
-                               obj_at_simps atcbContextGet_def unat_word_ariths unat_of_nat)
+                               obj_at_simps atcbContextGet_def unat_word_ariths unat_of_nat
+                               )
+         apply (clarsimp simp: fault_message_heap_simps)
          apply (rule_tac i="n + unat n_msgRegisters" in fault_message_relationE
                 , assumption, simp add: n_msgRegisters_def)
          apply (frule (2) h_val_field_clift'[symmetric])
