@@ -2328,5 +2328,12 @@ lemma fault_message_relation_h_t_valid_word_ptr[simplified]:
   shows "hrs_htd hrs \<Turnstile>\<^sub>t (machine_word_Ptr &(p\<rightarrow>[''msg_C'']) +\<^sub>p n)"
   using h_t_valid_clift[OF fault_message_relation_clift_word_ptr[OF fmi ti p n]] by simp
 
+lemmas fault_message_heap_simps =
+  fault_message_relation_array_assertion
+  fault_message_relation_clift_word_ptr
+  fault_message_relation_h_t_valid_word_ptr
+  fault_message_relation_h_t_valid_array
+  fault_message_relation_h_t_valid_global
+
 end
 end
