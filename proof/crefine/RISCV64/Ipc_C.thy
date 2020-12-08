@@ -1539,29 +1539,14 @@ lemma copyMRsFault_ccorres:
           apply vcg
          apply (clarsimp simp: msgRegisters_ccorres n_msgRegisters_def
                                obj_at_simps atcbContextGet_def unat_word_ariths unat_of_nat
-                               )
-         apply (clarsimp simp: fault_message_heap_simps)
-(*
-         apply (rule_tac i="n + unat n_msgRegisters" in fault_message_relationE
-                , assumption, simp add: n_msgRegisters_def)
-         apply (frule (2) h_val_field_clift'[symmetric])
-         apply (frule (2) h_t_valid_field[OF h_t_valid_clift])
-         apply (frule_tac n="n + unat n_msgRegisters" in h_t_valid_Array_element'[OF _ le0]
-                , simp add: n_msgRegisters_def)
+                               fault_message_heap_simps)
          apply (prop_tac "is_aligned (the recvBuffer + (ucast n_msgRegisters + 1 + of_nat n) * word_size) word_size_bits"
                 ; simp add: n_msgRegisters_def word_size_def word_size_bits_def)
           apply (clarsimp simp: valid_ipc_buffer_ptr_aligned_word_size_bits[simplified word_size_bits_def]
                                 is_aligned_add_mult_multI[where z=1 and n=3, OF _ le_refl refl, simplified]
                                 is_aligned_replicateI)
-         apply (simp add: heap_access_Array_element array_ptr_valid_array_assertionI
-                          n_msgRegisters_def word_size_def word_size_bits_def word_of_nat_less
-                          field_simps)
-         apply (clarsimp simp: valid_ipc_buffer_ptr_aligned_word_size_bits[simplified word_size_bits_def]
-                               is_aligned_add_mult_multI[where z=1 and n=3, OF _ le_refl refl, simplified]
-                               is_aligned_replicateI pointerInUserData_c_guard pointerInUserData_h_t_valid
-                               valid_ipc_buffer_ptr_array msg_align_bits)
-*)
-         subgoal sorry
+         apply (clarsimp simp: pointerInUserData_c_guard pointerInUserData_h_t_valid
+                               valid_ipc_buffer_ptr_array msg_align_bits field_simps)
         apply (clarsimp simp: min_def split: if_splits)
        apply (rename_tac theRecvBuffer)
        apply (clarsimp, vcg, intro impI, simp add: word_of_nat_plus[symmetric])
