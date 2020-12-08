@@ -2308,9 +2308,10 @@ lemma fault_message_relation_clift_word_ptr[simplified]:
   assumes ti: "fault_message_field_ti fmi"
   assumes p: "p = fmi_ptr fmi"
   assumes n: "n < CARD('len)"
-  shows "clift hrs (machine_word_Ptr &(p\<rightarrow>[''msg_C'']) +\<^sub>p n)
+  assumes o: "offset = of_nat n * of_nat (size_of TYPE(machine_word))"
+  shows "clift hrs (machine_word_Ptr (&(p\<rightarrow>[''msg_C'']) + offset))
          = Some (register_from_H (fmi_reg fmi ! n))"
-  unfolding p using fmi n fault_message_relation_unguarded_length[OF fmi]
+  unfolding p o using fmi n fault_message_relation_unguarded_length[OF fmi]
   apply (clarsimp simp: fault_message_relation_unguarded_def)
   apply (drule arg_cong[where f="\<lambda>xs. xs ! n"])
   apply (drule clift_field[where 'b="machine_word['len]"
@@ -2325,19 +2326,20 @@ lemma fault_message_relation_h_t_valid_word_ptr[simplified]:
   assumes ti: "fault_message_field_ti fmi"
   assumes p: "p = fmi_ptr fmi"
   assumes n: "n < CARD('len)"
-  shows "hrs_htd hrs \<Turnstile>\<^sub>t (machine_word_Ptr &(p\<rightarrow>[''msg_C'']) +\<^sub>p n)"
-  using h_t_valid_clift[OF fault_message_relation_clift_word_ptr[OF fmi ti p n]] by simp
+  assumes o: "offset = of_nat n * of_nat (size_of TYPE(machine_word))"
+  shows "hrs_htd hrs \<Turnstile>\<^sub>t (machine_word_Ptr (&(p\<rightarrow>[''msg_C'']) + offset))"
+  using h_t_valid_clift[OF fault_message_relation_clift_word_ptr[OF fmi ti p n]] o by simp
 
-(* FIXME: move *)
 lemma fault_message_relation_h_val_word_ptr[simplified]:
   fixes fmi :: "('struct::mem_type, 'len::array_max_count) fault_message_info"
   assumes fmi: "fault_message_relation_unguarded fmi (clift hrs)"
   assumes ti: "fault_message_field_ti fmi"
   assumes p: "p = fmi_ptr fmi"
   assumes n: "n < CARD('len)"
-  shows "h_val (hrs_mem hrs) (machine_word_Ptr &(p\<rightarrow>[''msg_C'']) +\<^sub>p n)
+  assumes o: "offset = of_nat n * of_nat (size_of TYPE(machine_word))"
+  shows "h_val (hrs_mem hrs) (machine_word_Ptr (&(p\<rightarrow>[''msg_C'']) + offset))
          = register_from_H (fmi_reg fmi ! n)"
-  using h_val_clift'[OF fault_message_relation_clift_word_ptr[OF fmi ti p n]] by simp
+  using h_val_clift'[OF fault_message_relation_clift_word_ptr[OF fmi ti p n]] o by simp
 
 lemmas fault_message_heap_simps =
   fault_message_relation_array_assertion
