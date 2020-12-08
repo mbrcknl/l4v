@@ -3574,32 +3574,21 @@ lemma copyMRsFaultReply_ccorres_exception:
                                msgRegisters_ccorres fault_message_heap_simps)
               apply fastforce
              apply (rule conseqPre, vcg)
-             apply (clarsimp simp: word_of_nat_less RISCV64_H.exceptionMessage_def
-                                   RISCV64.exceptionMessage_def)
-             apply (frule fault_message_relation_h_t_valid_array
-                    ; simp add: unat_of_nat
-                                array_ptr_valid_array_assertionI
-                                h_t_valid_Array_element_simp)
-            apply (simp add: min_def length_msgRegisters)
-            apply (clarsimp simp: min_def n_exceptionMessage_def
-                                  RISCV64_H.exceptionMessage_def
-                                  RISCV64.exceptionMessage_def
+             apply (drule (1) less_le_trans[where y=len])
+             apply (clarsimp simp: length_exceptionMessage n_exceptionMessage_def
+                                   unat_of_nat fault_message_heap_simps)
+            apply (clarsimp simp: min_def word_of_nat_less
                                   length_msgRegisters n_msgRegisters_def
-                                  message_info_to_H_def word_of_nat_less
-                           split: if_split)
-            apply (fastforce dest!: le_antisym)
-           apply clarsimp
-           apply (vcg, intro impI)
-           apply (simp add: typ_heap_simps)
-           subgoal for rv t_hrs i
-              apply (subgoal_tac "h_val (hrs_mem t_hrs) ((machine_word_Ptr &(exception_fault_message_global_Ptr\<rightarrow>[''msg_C''])) +\<^sub>p uint i)
-                                  = register_from_H (RISCV64_H.exceptionMessage ! unat i)")
-apply fastforce
-
-apply (simp add: typ_heap_simps)
-
-
-           sorry
+                                  length_exceptionMessage n_exceptionMessage_def
+                           split: if_splits)
+           apply (clarsimp, vcg, intro impI)
+           apply (drule_tac a=i in unat_mono)
+           apply (simp add: length_msgRegisters n_msgRegisters_def
+                            length_exceptionMessage n_exceptionMessage_def
+                            unat_of_nat)
+           apply (drule (1) less_le_trans[where y=len])
+           apply (simp add: fault_message_heap_simps typ_heap_simps)
+           apply blast
           apply wp
          apply (clarsimp simp: RISCV64_H.exceptionMessage_def
                                RISCV64.exceptionMessage_def
