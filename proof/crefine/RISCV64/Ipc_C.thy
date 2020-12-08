@@ -3558,7 +3558,7 @@ lemma copyMRsFaultReply_ccorres_exception:
                apply ctac
                  apply (rule ccorres_symb_exec_r)
                    apply ctac
-                  apply (vcg)
+                  apply vcg
                  apply clarsimp
                  apply (rule conseqPre, vcg)
                  subgoal by (auto simp: from_bool_def sanitiseRegister_def)
@@ -3567,18 +3567,12 @@ lemma copyMRsFaultReply_ccorres_exception:
                apply vcg
               apply clarsimp
               apply vcg
-              apply (frule fault_message_relation_h_t_valid_array
-                     ; simp add: length_msgRegisters length_exceptionMessage
-                                 n_msgRegisters_def n_exceptionMessage_def
-                                 msgRegisters_ccorres unat_of_nat word_of_nat_less
-                                 array_ptr_valid_array_assertionI
-                                 h_t_valid_Array_element_simp)
-              apply (subgoal_tac "h_val (hrs_mem t_hrs) ((machine_word_Ptr &(exception_fault_message_global_Ptr\<rightarrow>[''msg_C''])) +\<^sub>p int n)
-                                  = register_from_H (RISCV64_H.exceptionMessage ! n)")
-               apply fastforce
-              apply (erule_tac i=n in fault_message_relationE; simp)
-              apply (erule trans[rotated])
-              subgoal sorry
+              apply (drule (1) less_le_trans[where y=len])
+              apply (simp add: length_exceptionMessage n_exceptionMessage_def
+                               length_msgRegisters n_msgRegisters_def
+                               unat_of_nat word_of_nat_less
+                               msgRegisters_ccorres fault_message_heap_simps)
+              apply fastforce
              apply (rule conseqPre, vcg)
              apply (clarsimp simp: word_of_nat_less RISCV64_H.exceptionMessage_def
                                    RISCV64.exceptionMessage_def)
