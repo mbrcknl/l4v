@@ -1478,7 +1478,7 @@ lemma copyMRsFault_ccorres:
                                      and ys="drop (unat n_msgRegisters) (zip as bs)"
                                      for as bs, simplified]
                      bind_assoc card_register)
-   apply (prop_tac "of_nat CARD('len) < UCAST(_ \<rightarrow> machine_word_len) n_msgRegisters
+   apply (prop_tac "of_nat CARD('len) < SCAST(_ \<rightarrow> machine_word_len) n_msgRegisters
                     \<longleftrightarrow> CARD('len) < unat n_msgRegisters"
           , clarsimp simp: n_msgRegisters_def of_nat_mono_maybe'[where 'a=64])
    apply (rule ccorres_rhs_assoc2, rule ccorres_split_nothrow)
@@ -3524,7 +3524,6 @@ lemma Arch_getSanitiseRegisterInfo_ccorres:
   done
 
 lemma copyMRsFaultReply_ccorres_exception:
-  fixes fmi :: "('struct::mem_type, 'len::array_max_count) fault_message_info"
   shows "ccorres dc xfdc
                  (valid_pspace' and tcb_at' s and tcb_at' r
                                 and obj_at' (\<lambda>t. tcbFault t = Some f) r
@@ -3619,70 +3618,96 @@ lemma valid_drop_case: "\<lbrakk> \<lbrace>P\<rbrace> f \<lbrace>\<lambda>rv s. 
      apply simp+
   done
 
-lemma copyMRsFaultReply_ccorres_syscall:
-  fixes word_size :: "'a::len"
+(* FIXME: move *)
+definition fmi_len :: "('struct::c_type, 'len::finite) fault_message_info \<Rightarrow> 32 sword" where
+  "fmi_len fmi \<equiv> of_nat CARD('len)"
+
+(* FIXME: move *)
+lemma exception_fmi_len[simp]:
+  "fmi_len exception_fault_message_info = n_exceptionMessage"
+  by (simp add: fmi_len_def n_exceptionMessage_def)
+
+(* FIXME: move *)
+lemma syscall_fmi_len[simp]:
+  "fmi_len syscall_fault_message_info = n_syscallMessage"
+  by (simp add: fmi_len_def n_syscallMessage_def)
+
+lemma copyMRsFaultReply_ccorres:
+  fixes fmi :: "('struct::mem_type, 'len::array_max_count) fault_message_info"
   shows "ccorres dc xfdc
-           (valid_pspace' and tcb_at' s
-                          and tcb_at' r
-                          and obj_at' (\<lambda>t. tcbFault t = Some f) r
-                          and K (r \<noteq> s)
-                          and K (len \<le> unat n_syscallMessage))
-           (UNIV \<inter> \<lbrace>\<acute>sender = tcb_ptr_to_ctcb_ptr s\<rbrace>
-                 \<inter> \<lbrace>\<acute>receiver = tcb_ptr_to_ctcb_ptr r\<rbrace>
-                 \<inter> \<lbrace>\<acute>id___anonymous_enum = MessageID_Syscall \<rbrace>
+           (valid_pspace' and tcb_at' sender
+                          and tcb_at' receiver
+                          and obj_at' (\<lambda>t. tcbFault t = Some f) receiver
+                          and K (receiver \<noteq> sender)
+                          and K (len \<le> CARD('len) \<and> CARD('len) \<le> CARD(register)))
+           (UNIV \<inter> {s'. fault_message_relation_unguarded fmi (cslift s')}
+                 \<inter> \<lbrace>\<acute>sender = tcb_ptr_to_ctcb_ptr sender\<rbrace>
+                 \<inter> \<lbrace>\<acute>receiver = tcb_ptr_to_ctcb_ptr receiver\<rbrace>
+                 \<inter> \<lbrace>\<acute>fault_message = Ptr &(fmi_ptr fmi\<rightarrow>[''msg_C''])
+                     \<and> typ_uinfo_t TYPE('struct) \<bottom>\<^sub>t typ_uinfo_t TYPE(tcb_C)
+                     \<and> fault_message_length_relation fmi
+                     \<and> fault_message_field_ti fmi\<rbrace>
                  \<inter> \<lbrace>\<acute>length___unsigned_long = of_nat len \<rbrace>) hs
-           (do t \<leftarrow> getSanitiseRegisterInfo r;
-               a \<leftarrow> zipWithM_x (\<lambda>rs rd. do v \<leftarrow> asUser s (getRegister rs);
-                                           asUser r (setRegister rd (RISCV64_H.sanitiseRegister t rd v))
+           (do t \<leftarrow> getSanitiseRegisterInfo receiver;
+               a \<leftarrow> zipWithM_x (\<lambda>rs rd. do v \<leftarrow> asUser sender (getRegister rs);
+                                           asUser receiver (setRegister rd (RISCV64_H.sanitiseRegister t rd v))
                                         od)
-               RISCV64_H.msgRegisters (take len RISCV64_H.syscallMessage);
-               sendBuf \<leftarrow> lookupIPCBuffer False s;
+               RISCV64_H.msgRegisters (take len (fmi_reg fmi));
+               sendBuf \<leftarrow> lookupIPCBuffer False sender;
                case sendBuf of None \<Rightarrow> return ()
                             | Some bufferPtr \<Rightarrow>
                                    zipWithM_x (\<lambda>i rd. do v \<leftarrow> loadWordUser (bufferPtr + i * 8);
-                                                         asUser r (setRegister rd (RISCV64_H.sanitiseRegister t rd v))
+                                                         asUser receiver (setRegister rd (RISCV64_H.sanitiseRegister t rd v))
                                                       od)
-                                      [scast n_msgRegisters + 1.e.scast n_syscallMessage]
-                                      (drop (unat (scast n_msgRegisters :: machine_word))
-                                            (take len RISCV64_H.syscallMessage))
+                                      [scast (fmi_len fmi) + 1 .e. scast (fmi_len fmi)]
+                                      (drop (unat (scast (fmi_len fmi) :: machine_word))
+                                            (take len (fmi_reg fmi)))
                                  od)
            (Call copyMRsFaultReply_'proc)"
-  proof -
-  let ?obj_at_ft = "obj_at' (\<lambda>tcb. tcbFault tcb = Some f) s"
-  note symb_exec_r_fault = ccorres_symb_exec_r_known_rv_UNIV
-          [where xf'=ret__unsigned_' and R="?obj_at_ft" and R'=UNIV]
-  show ?thesis
-    apply (unfold K_def, rule ccorres_gen_asm) using [[goals_limit=1]]
-    apply (cinit' lift: sender_' receiver_'
-                        id___anonymous_enum_'
-                        length___unsigned_long_'
-                  simp: whileAnno_def)
-apply (ctac(no_vcg) add: Arch_getSanitiseRegisterInfo_ccorres)
+  apply (unfold K_def, intro ccorres_gen_asm)
+  apply (cinit' lift: sender_' receiver_'
+                      fault_message_'
+                      length___unsigned_long_'
+                simp: whileAnno_def)
+   apply (ctac add: Arch_getSanitiseRegisterInfo_ccorres)
      apply (rule ccorres_rhs_assoc2)
-     apply (simp add: MessageID_Syscall_def)
-     apply ccorres_rewrite
-     apply (rule ccorres_split_nothrow_novcg)
-         apply (rule ccorres_zipWithM_x_while)
+     apply (rule ccorres_split_nothrow)
+         apply (rule_tac F="\<top>\<top>" and Q="{s'. fault_message_relation_unguarded fmi (cslift s')}"
+                  in ccorres_zipWithM_x_whileQ)
              apply clarsimp
-             apply (intro ccorres_rhs_assoc)
-             apply (rule ccorres_symb_exec_r)
-               apply ctac
-                 apply (rule ccorres_symb_exec_r)
-                   apply ctac
-                  apply (vcg)
-                 apply (rule conseqPre, vcg)
-                 apply fastforce
-                apply wp
+             apply (rule ccorres_guard_imp2)
+              apply (intro ccorres_rhs_assoc)
+              apply (rule ccorres_symb_exec_r)
+                apply ctac
+                  apply (rule ccorres_symb_exec_r)
+                    apply ctac
+                   apply vcg
+                  apply (rule conseqPre, vcg)
+                  apply fastforce
+                 apply wp
+                apply vcg
                apply vcg
-              apply vcg
-              apply (rule conjI, simp add: RISCV64_H.syscallMessage_def
-                                           RISCV64.syscallMessage_def word_of_nat_less
-                                           unat_of_nat msgRegisters_ccorres n_msgRegisters_def
-                                           length_msgRegisters)
-              apply (simp add: msgRegisters_ccorres n_msgRegisters_def length_msgRegisters unat_of_nat
-                               syscallMessage_ccorres[symmetric,simplified MessageID_Syscall_def,simplified]
-                               n_syscallMessage_def length_syscallMessage sanitiseRegister_def)
-              apply (auto simp add: word_less_nat_alt unat_of_nat)[1]
+              apply (rule conseqPre, vcg, clarsimp)
+             apply (drule (1) less_le_trans[where y=len])
+             apply (clarsimp simp: length_msgRegisters n_msgRegisters_def
+                                   msgRegisters_ccorres
+                                   word_of_nat_less unat_of_nat
+                                   fault_message_heap_simps)
+             apply fastforce
+            apply (clarsimp simp: card_register fault_message_length_relationD length_msgRegisters)
+            apply (clarsimp simp: min_def word_of_nat_less unat_of_nat dest!: unat_mono split: if_splits)
+           apply clarsimp
+           apply vcg
+           apply (intro impI)
+
+
+
+
+
+
+
+
+
              apply (rule conseqPre, vcg)
              apply (clarsimp simp: word_of_nat_less syscallMessage_unfold length_msgRegisters
                                    n_syscallMessage_def n_msgRegisters_def)
@@ -3821,6 +3846,8 @@ apply (ctac(no_vcg) add: Arch_getSanitiseRegisterInfo_ccorres)
    apply auto
   done
 qed
+*) sorry
+
 
 lemma handleArchFaultReply_corres:
   "ccorres (\<lambda>rv rv'. rv = to_bool rv') ret__unsigned_long_'
