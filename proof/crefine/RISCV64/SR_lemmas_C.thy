@@ -2200,7 +2200,7 @@ lemmas fault_message_info_all_simps[simp]
   = fault_message_info_simps[OF syscall_fault_message_info_def]
     fault_message_info_simps[OF exception_fault_message_info_def]
 
-lemma fault_message_relation_unguarded:
+lemma fault_message_relation_unguarded[simp]:
   assumes "fault_message_length_relation fmi"
   shows "fault_message_relation_guarded fmi ch \<longleftrightarrow> fault_message_relation_unguarded fmi ch"
   using assms by (auto simp: fault_message_relation_guarded_def)
@@ -2211,10 +2211,16 @@ lemma fault_message_relation_unguarded_length:
   apply (drule arg_cong[where f=length], simp)
   done
 
-lemma fault_message_length_relationD:
+lemma fault_message_length_relationD[simp]:
   fixes fmi :: "('struct::mem_type, 'len::finite) fault_message_info"
   shows "fault_message_length_relation fmi \<Longrightarrow> length (fmi_reg fmi) = CARD('len)"
   by (simp add: fault_message_length_relation_def)
+
+lemmas fault_message_length_relation_simp[simp] =
+  fault_message_length_relationD[OF fault_message_relation_unguarded_length]
+
+lemmas fault_message_relation_unguardedD =
+  fault_message_relation_unguarded_def[simplified atomize_eq, THEN iffD1]
 
 lemma syscall_fault_message_length_relation[simp, intro!]:
   "fault_message_length_relation syscall_fault_message_info"
@@ -2311,14 +2317,13 @@ lemma fault_message_relation_clift_word_ptr[simplified]:
   assumes o: "offset = of_nat n * of_nat (size_of TYPE(machine_word))"
   shows "clift hrs (machine_word_Ptr (&(p\<rightarrow>[''msg_C'']) + offset))
          = Some (register_from_H (fmi_reg fmi ! n))"
-  unfolding p o using fmi n fault_message_relation_unguarded_length[OF fmi]
-  apply (clarsimp simp: fault_message_relation_unguarded_def)
+  unfolding p o using n fmi fault_message_relation_unguardedD[OF fmi]
+  apply (clarsimp)
   apply (drule arg_cong[where f="\<lambda>xs. xs ! n"])
   apply (drule clift_field[where 'b="machine_word['len]"
                            , OF _ fault_message_field_tiD[OF ti]], simp)
   apply (drule clift_Array_element_simp[OF _ n refl])
-  apply (simp add: fault_message_length_relationD list_array_nth)
-  done
+  by (simp add: list_array_nth)
 
 lemma fault_message_relation_h_t_valid_word_ptr[simplified]:
   fixes fmi :: "('struct::mem_type, 'len::array_max_count) fault_message_info"

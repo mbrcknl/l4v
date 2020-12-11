@@ -1558,10 +1558,10 @@ lemma fault_message_relation_typ_region_bytes:
   assumes p: "is_aligned ptr bits \<and> kernel_data_refs \<inter> {ptr ..+ 2^bits} = {}"
   assumes d: "in_kernel_data (fmi_ptr fmi)"
   assumes t: "typ_uinfo_t TYPE('struct) \<noteq> typ_uinfo_t TYPE (word8)"
-  shows "fault_message_relation_guarded fmi (clift (hrs_htd_update (typ_region_bytes ptr bits) cheap))
-         = fault_message_relation_guarded fmi (clift cheap)"
+  shows "fault_message_relation_unguarded fmi (clift (hrs_htd_update (typ_region_bytes ptr bits) cheap))
+         = fault_message_relation_unguarded fmi (clift cheap)"
   using assms
-  by (clarsimp simp: fault_message_relation_guarded_def fault_message_relation_unguarded_def
+  by (clarsimp simp: fault_message_relation_unguarded_def
                      clift_in_kernel_data_typ_region_bytes[OF p d t])
 
 lemma aligned_range_no_refs_equiv:

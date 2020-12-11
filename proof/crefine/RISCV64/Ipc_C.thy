@@ -1438,6 +1438,16 @@ lemma asUser_obj_at_elsewhere:
   apply clarsimp
   done
 
+lemma copyMRsFaultReply_ccorres:
+  fixes fmi :: "('struct::mem_type, 'len::array_max_count) fault_message_info"
+  shows "ccorres dc xfdc
+                 (udefined)
+                 (UNIV \<inter> undefined)
+                 hs
+                 undefined
+                 undefined"
+  oops
+
 lemma copyMRsFault_ccorres:
   fixes fmi :: "('struct::mem_type, 'len::array_max_count) fault_message_info"
   shows "ccorres dc xfdc
@@ -3632,6 +3642,11 @@ lemma syscall_fmi_len[simp]:
   "fmi_len syscall_fault_message_info = n_syscallMessage"
   by (simp add: fmi_len_def n_syscallMessage_def)
 
+(* FIXME: move *)
+lemma unat_mono_le:
+  "x \<le> y \<Longrightarrow> unat x \<le> unat y"
+  by (cases "x = y"; simp add: unat_mono less_imp_le)
+
 lemma copyMRsFaultReply_ccorres:
   fixes fmi :: "('struct::mem_type, 'len::array_max_count) fault_message_info"
   shows "ccorres dc xfdc
@@ -3659,17 +3674,20 @@ lemma copyMRsFaultReply_ccorres:
                                    zipWithM_x (\<lambda>i rd. do v \<leftarrow> loadWordUser (bufferPtr + i * 8);
                                                          asUser receiver (setRegister rd (RISCV64_H.sanitiseRegister t rd v))
                                                       od)
-                                      [scast (fmi_len fmi) + 1 .e. scast (fmi_len fmi)]
-                                      (drop (unat (scast (fmi_len fmi) :: machine_word))
+                                      [scast n_msgRegisters + 1 .e. scast (fmi_len fmi)]
+                                      (drop (unat (scast n_msgRegisters :: machine_word))
                                             (take len (fmi_reg fmi)))
                                  od)
            (Call copyMRsFaultReply_'proc)"
+find_theorems handleFaultReply -valid
+thm getMRs_def
   apply (unfold K_def, intro ccorres_gen_asm)
   apply (cinit' lift: sender_' receiver_'
                       fault_message_'
                       length___unsigned_long_'
                 simp: whileAnno_def)
    apply (ctac add: Arch_getSanitiseRegisterInfo_ccorres)
+     apply (rename_tac sanitise_info sanitise_info')
      apply (rule ccorres_rhs_assoc2)
      apply (rule ccorres_split_nothrow)
          apply (rule_tac F="\<top>\<top>" and Q="{s'. fault_message_relation_unguarded fmi (cslift s')}"
@@ -3689,46 +3707,56 @@ lemma copyMRsFaultReply_ccorres:
                apply vcg
               apply (rule conseqPre, vcg, clarsimp)
              apply (drule (1) less_le_trans[where y=len])
-             apply (clarsimp simp: length_msgRegisters n_msgRegisters_def
-                                   msgRegisters_ccorres
-                                   word_of_nat_less unat_of_nat
-                                   fault_message_heap_simps)
+             apply (clarsimp simp: length_msgRegisters n_msgRegisters_def msgRegisters_ccorres
+                                   word_of_nat_less unat_of_nat fault_message_heap_simps)
              apply fastforce
-            apply (clarsimp simp: card_register fault_message_length_relationD length_msgRegisters)
+            apply (clarsimp simp: card_register length_msgRegisters)
             apply (clarsimp simp: min_def word_of_nat_less unat_of_nat dest!: unat_mono split: if_splits)
-           apply clarsimp
-           apply vcg
-           apply (intro impI)
-
-
-
-
-
-
-
-
-
-             apply (rule conseqPre, vcg)
-             apply (clarsimp simp: word_of_nat_less syscallMessage_unfold length_msgRegisters
-                                   n_syscallMessage_def n_msgRegisters_def)
-            apply (simp add: min_def length_msgRegisters)
-            apply (clarsimp simp:   min_def n_syscallMessage_def
-                                    length_msgRegisters n_msgRegisters_def
-                                    length_syscallMessage
-                                    message_info_to_H_def word_of_nat_less
-                             split: if_split)
-            apply (simp add: word_less_nat_alt unat_of_nat not_le)
-           apply clarsimp
-           apply (vcg spec=TrueI)
-           apply clarsimp
+           apply (clarsimp, vcg, intro impI)
+           apply (drule_tac a=i in unat_mono)
+           apply (clarsimp simp: length_msgRegisters n_msgRegisters_def card_register unat_of_nat)
+           apply (drule (1) less_le_trans[where y=len])
+           apply (clarsimp simp: fault_message_heap_simps clift_heap_update_same typ_heap_simps)
+           apply blast
           apply wp
-            apply simp+
-         apply (clarsimp simp: length_syscallMessage
-                               length_msgRegisters
-                               n_msgRegisters_def n_syscallMessage_def
-                               word_bits_def min_def
-                         split: if_split)
+         apply (simp add: min_less_iff_disj word_bits_def card_register)
         apply ceqv
+       apply (clarsimp simp del: Collect_const)
+       apply (rule ccorres_Cond_rhs[rotated])
+        apply (rule ccorres_symb_exec_l)
+           apply (clarsimp simp: not_less unat_of_nat card_register fmi_len_def
+                                 drop_take length_msgRegisters
+                           cong: option.case_cong
+                          dest!: unat_mono_le)
+           apply (rule ccorres_return_Skip')
+          apply wp
+         apply wp
+        apply wp
+       apply ctac
+         apply (rename_tac send_buf send_buf')
+         apply (rule_tac P="send_buf \<noteq> Some 0" in ccorres_gen_asm)
+         apply (clarsimp simp del: Collect_const)
+         apply (rule ccorres_Cond_rhs[rotated])
+          apply (clarsimp simp: option_to_ptr_NULL_eq)
+          apply (rule ccorres_return_Skip')
+         apply (simp add: option_to_ptr_def option_to_0_def split: option.splits)
+         apply (rename_tac send_buf_ptr)
+thm handleFaultReply_def
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
        apply (rule_tac P'="if 4 < len then _ else _" in ccorres_inst)
        apply (cases "4 < len" ; simp)
         apply (clarsimp simp: unat_ucast_less_no_overflow n_syscallMessage_def
