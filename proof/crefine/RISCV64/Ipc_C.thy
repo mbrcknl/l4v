@@ -1438,16 +1438,6 @@ lemma asUser_obj_at_elsewhere:
   apply clarsimp
   done
 
-lemma copyMRsFaultReply_ccorres:
-  fixes fmi :: "('struct::mem_type, 'len::array_max_count) fault_message_info"
-  shows "ccorres dc xfdc
-                 (udefined)
-                 (UNIV \<inter> undefined)
-                 hs
-                 undefined
-                 undefined"
-  oops
-
 lemma copyMRsFault_ccorres:
   fixes fmi :: "('struct::mem_type, 'len::array_max_count) fault_message_info"
   shows "ccorres dc xfdc
@@ -3647,6 +3637,153 @@ lemma unat_mono_le:
   "x \<le> y \<Longrightarrow> unat x \<le> unat y"
   by (cases "x = y"; simp add: unat_mono less_imp_le)
 
+definition copyMRsFaultReply ::
+  "('struct::c_type, 'len::finite) fault_message_info \<Rightarrow> machine_word \<Rightarrow> machine_word \<Rightarrow> nat \<Rightarrow> unit kernel"
+  where
+  "copyMRsFaultReply fmi sender receiver len \<equiv>
+    do sanitise_info \<leftarrow> getSanitiseRegisterInfo receiver;
+       regs \<leftarrow> return (take len (fmi_reg fmi));
+       zipWithM_x (\<lambda>rs rd. do v \<leftarrow> asUser sender (getRegister rs);
+                              asUser receiver (setRegister rd (sanitiseRegister sanitise_info rd v))
+                           od)
+                  msgRegisters regs;
+       sendBuf \<leftarrow> lookupIPCBuffer False sender;
+       case sendBuf of
+            None \<Rightarrow> return ()
+          | Some bufferPtr \<Rightarrow>
+              zipWithM_x (\<lambda>i rd. do v \<leftarrow> loadWordUser (bufferPtr + PPtr (i * word_size));
+                                    asUser receiver (setRegister rd (local.sanitiseRegister sanitise_info rd v))
+                                 od)
+                         [SCAST(_ \<rightarrow> machine_word_len) n_msgRegisters + 1 .e. of_nat CARD('len)]
+                         (drop (unat (SCAST(_ \<rightarrow> machine_word_len) n_msgRegisters)) regs)
+       od"
+
+thm ccorres_move_array_assertions
+    array_assertion_valid_ipc_buffer_ptr_abs
+
+lemma array_assertion_fault_message_relation:
+  fixes fmi :: "('struct::mem_type, 'len::array_max_count) fault_message_info"
+  shows "\<forall>s s'.
+         (s, s') \<in> rf_sr \<and> True
+                         \<and> fault_message_relation_unguarded fmi (cslift s')
+                         \<and> fault_message_field_ti fmi
+                         \<and> n s' \<le> CARD('len) \<and> (x s' \<noteq> 0 \<longrightarrow> n s' \<noteq> 0)
+         \<longrightarrow> x s' = 0 \<or> array_assertion (machine_word_Ptr &(fmi_ptr fmi\<rightarrow>[''msg_C'']))
+                                        (n s') (hrs_htd (t_hrs_' (globals s')))"
+  apply (intro allI impI)
+  apply (case_tac "x s' = 0"; clarsimp simp: fault_message_heap_simps)
+  done
+
+lemmas ccorres_move_array_assertion_fault_message =
+  ccorres_move_array_assertions[OF array_assertion_fault_message_relation]
+
+lemma copyMRsFaultReply_ccorres:
+  fixes fmi :: "('struct::mem_type, 'len::array_max_count) fault_message_info"
+  shows "ccorres dc xfdc
+                 (valid_pspace' and K (sender \<noteq> receiver)
+                                and K (len \<le> CARD('len) \<and> CARD('len) \<le> CARD(register)))
+                 (UNIV \<inter> {s'. fault_message_relation_unguarded fmi (cslift s')}
+                       \<inter> \<lbrace>\<acute>sender = tcb_ptr_to_ctcb_ptr sender\<rbrace>
+                       \<inter> \<lbrace>\<acute>receiver = tcb_ptr_to_ctcb_ptr receiver\<rbrace>
+                       \<inter> \<lbrace>\<acute>fault_message = Ptr &(fmi_ptr fmi\<rightarrow>[''msg_C''])
+                            \<and> typ_uinfo_t TYPE('struct) \<bottom>\<^sub>t typ_uinfo_t TYPE(tcb_C)
+                            \<and> fault_message_length_relation fmi
+                            \<and> fault_message_field_ti fmi\<rbrace>
+                       \<inter> \<lbrace>\<acute>length___unsigned_long = of_nat len\<rbrace>)
+                 hs
+                 (copyMRsFaultReply fmi sender receiver len)
+                 (Call copyMRsFaultReply_'proc)"
+  apply (unfold K_def, intro ccorres_gen_asm)
+  apply (cinit lift: sender_' receiver_' fault_message_' length___unsigned_long_'
+               simp: whileAnno_def)
+   apply (ctac add: Arch_getSanitiseRegisterInfo_ccorres)
+     apply (rename_tac sanitise_info sanitise_info')
+     apply (rule ccorres_rhs_assoc2, rule ccorres_split_nothrow)
+         apply (rule_tac F="\<top>\<top>" and Q="{s'. fault_message_relation_unguarded fmi (cslift s')}"
+                  in ccorres_zipWithM_x_whileQ)
+             apply clarsimp
+             apply (rule ccorres_guard_imp2)
+              apply (intro ccorres_rhs_assoc)
+              apply (rule ccorres_symb_exec_r)
+                apply ctac
+                  apply (rule ccorres_symb_exec_r)
+                    apply ctac
+                   apply vcg
+                  apply (rule conseqPre, vcg)
+                  apply fastforce
+                 apply wp
+                apply vcg
+               apply vcg
+              apply (rule conseqPre, vcg, clarsimp)
+             apply (drule (1) less_le_trans[where y=len])
+             apply (clarsimp simp: length_msgRegisters n_msgRegisters_def msgRegisters_ccorres
+                                   word_of_nat_less unat_of_nat fault_message_heap_simps)
+             apply fastforce
+            apply (clarsimp simp: card_register length_msgRegisters)
+            apply (clarsimp simp: min_def word_of_nat_less unat_of_nat dest!: unat_mono split: if_splits)
+           apply (clarsimp, vcg, intro impI)
+           apply (drule_tac a=i in unat_mono)
+           apply (clarsimp simp: length_msgRegisters n_msgRegisters_def card_register unat_of_nat)
+           apply (drule (1) less_le_trans[where y=len])
+           apply (clarsimp simp: fault_message_heap_simps clift_heap_update_same typ_heap_simps)
+           apply blast
+          apply wp
+         apply (simp add: min_less_iff_disj word_bits_def card_register)
+        apply ceqv
+       apply (clarsimp simp del: Collect_const)
+       apply (rule ccorres_Cond_rhs[rotated])
+        apply (rule ccorres_symb_exec_l)
+           apply (clarsimp simp: not_less unat_of_nat card_register fmi_len_def
+                                 drop_take length_msgRegisters
+                           cong: option.case_cong
+                          dest!: unat_mono_le)
+           apply (rule ccorres_return_Skip')
+          apply wp
+         apply wp
+        apply wp
+       apply ctac
+         apply (rename_tac send_buf send_buf')
+         apply (rule_tac P="send_buf \<noteq> Some 0" in ccorres_gen_asm)
+         apply (clarsimp simp del: Collect_const)
+         apply (rule ccorres_Cond_rhs[rotated])
+          apply (clarsimp simp: option_to_ptr_NULL_eq)
+          apply (rule ccorres_return_Skip')
+         apply (simp add: option_to_ptr_def option_to_0_def zipWithM_x_mapM_x
+                   split: option.splits)
+         apply (rename_tac send_buf_ptr)
+         apply wpfix
+         apply (rule_tac P="is_aligned send_buf_ptr msg_align_bits" in ccorres_gen_asm)
+         apply (rule ccorres_rel_imp[where xf=xfdc, OF _ TrueI])
+         apply (rule_tac F="\<lambda>i. valid_pspace' and valid_ipc_buffer_ptr' send_buf_ptr"
+                     and Q="{s'. fault_message_relation_unguarded fmi (cslift s')}"
+                     and i="min len (unat n_msgRegisters)"
+                  in ccorres_mapM_x_whileQ')
+             apply clarsimp
+             apply (rule ccorres_guard_imp2)
+              apply (rule ccorres_pre_loadWordUser)
+              apply (intro ccorres_rhs_assoc)
+              apply (rule ccorres_move_array_assertion_fault_message
+                          ccorres_Guard_Seq[where S="{s. htd s \<Turnstile>\<^sub>t ptr s}" for ptr htd])+
+              apply (rule ccorres_symb_exec_r)
+                apply (rule ccorres_move_array_assertion_ipc_buffer
+                            ccorres_Guard_Seq[where S="{s. htd s \<Turnstile>\<^sub>t ptr s}" for ptr htd])+
+                apply (rule ccorres_symb_exec_r)
+                  apply (rule ccorres_symb_exec_r)
+                    apply ctac
+                   apply vcg
+                  apply (rule conseqPre, vcg)
+                  apply clarsimp
+                 apply vcg
+                apply (rule conseqPre, vcg)
+                apply clarsimp
+               apply vcg
+              apply (rule conseqPre, vcg)
+              apply clarsimp
+             apply clarsimp
+using [[goals_limit=99]]
+
+  oops
+
 lemma copyMRsFaultReply_ccorres:
   fixes fmi :: "('struct::mem_type, 'len::array_max_count) fault_message_info"
   shows "ccorres dc xfdc
@@ -3679,8 +3816,6 @@ lemma copyMRsFaultReply_ccorres:
                                             (take len (fmi_reg fmi)))
                                  od)
            (Call copyMRsFaultReply_'proc)"
-find_theorems handleFaultReply -valid
-thm getMRs_def
   apply (unfold K_def, intro ccorres_gen_asm)
   apply (cinit' lift: sender_' receiver_'
                       fault_message_'
