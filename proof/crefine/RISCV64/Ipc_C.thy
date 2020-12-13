@@ -3651,15 +3651,12 @@ definition copyMRsFaultReply ::
        case sendBuf of
             None \<Rightarrow> return ()
           | Some bufferPtr \<Rightarrow>
-              zipWithM_x (\<lambda>i rd. do v \<leftarrow> loadWordUser (bufferPtr + PPtr (i * word_size));
+              zipWithM_x (\<lambda>i rd. do v \<leftarrow> loadWordUser (bufferPtr + PPtr (of_nat (Suc i) * word_size));
                                     asUser receiver (setRegister rd (local.sanitiseRegister sanitise_info rd v))
                                  od)
-                         [SCAST(_ \<rightarrow> machine_word_len) n_msgRegisters + 1 .e. of_nat CARD('len)]
-                         (drop (unat (SCAST(_ \<rightarrow> machine_word_len) n_msgRegisters)) regs)
-       od"
-
-thm ccorres_move_array_assertions
-    array_assertion_valid_ipc_buffer_ptr_abs
+                         [length msgRegisters ..< CARD('len)]
+                         (drop (length msgRegisters) regs)
+    od"
 
 lemma array_assertion_fault_message_relation:
   fixes fmi :: "('struct::mem_type, 'len::array_max_count) fault_message_info"
@@ -3676,6 +3673,10 @@ lemma array_assertion_fault_message_relation:
 
 lemmas ccorres_move_array_assertion_fault_message =
   ccorres_move_array_assertions[OF array_assertion_fault_message_relation]
+
+lemma valid_ipc_buffer_ptr'_aligned:
+  "valid_ipc_buffer_ptr' ptr s \<Longrightarrow> is_aligned ptr msg_align_bits"
+  by (simp add: valid_ipc_buffer_ptr'_def)
 
 lemma copyMRsFaultReply_ccorres:
   fixes fmi :: "('struct::mem_type, 'len::array_max_count) fault_message_info"
@@ -3709,8 +3710,7 @@ lemma copyMRsFaultReply_ccorres:
                   apply (rule ccorres_symb_exec_r)
                     apply ctac
                    apply vcg
-                  apply (rule conseqPre, vcg)
-                  apply fastforce
+                  apply (rule conseqPre, vcg, clarsimp)
                  apply wp
                 apply vcg
                apply vcg
@@ -3771,16 +3771,22 @@ lemma copyMRsFaultReply_ccorres:
                   apply (rule ccorres_symb_exec_r)
                     apply ctac
                    apply vcg
-                  apply (rule conseqPre, vcg)
-                  apply clarsimp
+                  apply (rule conseqPre, vcg, clarsimp)
                  apply vcg
-                apply (rule conseqPre, vcg)
-                apply clarsimp
+                apply (rule conseqPre, vcg, clarsimp)
                apply vcg
-              apply (rule conseqPre, vcg)
-              apply clarsimp
-             apply clarsimp
-using [[goals_limit=99]]
+              apply (rule conseqPre, vcg, clarsimp)
+             apply (clarsimp simp: length_msgRegisters n_msgRegisters_def msg_align_bits
+                                   less_diff_conv unat_word_ariths unat_of_nat card_register)
+             apply (drule (1) less_le_trans[where y=len])
+             apply (clarsimp simp: word_size_def fault_message_heap_simps typ_heap_simps)
+             apply (clarsimp simp: is_aligned_add is_alignedI is_aligned_and_2_to_k
+                                   is_aligned_weaken[OF valid_ipc_buffer_ptr'_aligned]
+                                   msg_align_bits field_simps)
+             apply fastforce
+            apply (clarsimp simp: min_def length_msgRegisters n_msgRegisters_def le_diff_iff
+                           split: if_splits)
+           apply (intro allI impI, rule conseqPre, vcg)
 
   oops
 
