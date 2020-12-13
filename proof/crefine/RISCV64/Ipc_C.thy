@@ -3705,6 +3705,8 @@ lemma copyMRsFaultReply_ccorres:
              apply clarsimp
              apply (rule ccorres_guard_imp2)
               apply (intro ccorres_rhs_assoc)
+              apply (rule ccorres_move_array_assertion_fault_message
+                          ccorres_Guard_Seq[where S="{s. htd s \<Turnstile>\<^sub>t ptr s}" for ptr htd])+
               apply (rule ccorres_symb_exec_r)
                 apply ctac
                   apply (rule ccorres_symb_exec_r)
@@ -3717,8 +3719,8 @@ lemma copyMRsFaultReply_ccorres:
               apply (rule conseqPre, vcg, clarsimp)
              apply (drule (1) less_le_trans[where y=len])
              apply (clarsimp simp: length_msgRegisters n_msgRegisters_def msgRegisters_ccorres
-                                   word_of_nat_less unat_of_nat fault_message_heap_simps)
-             apply fastforce
+                                   word_of_nat_less fault_message_heap_simps card_register)
+             apply (fastforce simp: word_neq_0_conv unat_of_nat dest!: unat_mono)
             apply (clarsimp simp: card_register length_msgRegisters)
             apply (clarsimp simp: min_def word_of_nat_less unat_of_nat dest!: unat_mono split: if_splits)
            apply (clarsimp, vcg, intro impI)
@@ -3756,7 +3758,7 @@ lemma copyMRsFaultReply_ccorres:
          apply (rule ccorres_rel_imp[where xf=xfdc, OF _ TrueI])
          apply (rule_tac F="\<lambda>i. valid_pspace' and valid_ipc_buffer_ptr' send_buf_ptr"
                      and Q="{s'. fault_message_relation_unguarded fmi (cslift s')}"
-                     and i="min len (unat n_msgRegisters)"
+                     and i="length msgRegisters"
                   in ccorres_mapM_x_whileQ')
              apply clarsimp
              apply (rule ccorres_guard_imp2)
@@ -3787,6 +3789,22 @@ lemma copyMRsFaultReply_ccorres:
             apply (clarsimp simp: min_def length_msgRegisters n_msgRegisters_def le_diff_iff
                            split: if_splits)
            apply (intro allI impI, rule conseqPre, vcg)
+           apply (clarsimp simp: clift_heap_update_same typ_heap_simps
+                                 length_msgRegisters n_msgRegisters_def
+                       simp del: imp_disjL)
+           apply (drule unat_mono[where b="of_nat len"])
+           apply (frule unat_mono[where a="i_' _"])
+           apply (clarsimp simp: unat_of_nat card_register min_less_iff_disj
+                                 length_msgRegisters n_msgRegisters_def)
+           apply (drule (1) less_le_trans[where x="unat (i_' _)" and y=len])
+           apply (clarsimp simp: fault_message_heap_simps)
+           apply fastforce
+          (* FIXME: wpsimp fails here *)
+          apply (wp, clarsimp)
+         apply (fastforce simp: min_less_iff_disj unat_of_nat card_register word_bits_def
+                                length_msgRegisters n_msgRegisters_def
+                         dest!: unat_mono)
+        apply (wpsimp wp: )
 
   oops
 
