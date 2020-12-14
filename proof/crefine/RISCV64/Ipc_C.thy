@@ -3523,6 +3523,7 @@ lemma Arch_getSanitiseRegisterInfo_ccorres:
   apply (simp add: false_def)
   done
 
+(* FIXME: delete *)
 lemma copyMRsFaultReply_ccorres_exception:
   shows "ccorres dc xfdc
                  (valid_pspace' and tcb_at' s and tcb_at' r
