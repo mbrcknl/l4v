@@ -3514,7 +3514,7 @@ lemma fault_case_absorb_bind:
 
 lemma Arch_getSanitiseRegisterInfo_ccorres:
   "ccorres ((=) \<circ> from_bool) ret__unsigned_long_'
-     (tcb_at' r and no_0_obj' and valid_objs')
+     (no_0_obj' and valid_objs')
      (UNIV \<inter> {s. thread_' s = tcb_ptr_to_ctcb_ptr r}) hs
      (getSanitiseRegisterInfo r)
      (Call Arch_getSanitiseRegisterInfo_'proc)"
@@ -3681,7 +3681,8 @@ lemma valid_ipc_buffer_ptr'_aligned:
 lemma copyMRsFaultReply_ccorres:
   fixes fmi :: "('struct::mem_type, 'len::array_max_count) fault_message_info"
   shows "ccorres dc xfdc
-                 (valid_pspace' and K (sender \<noteq> receiver)
+                 (valid_pspace' and tcb_at' sender
+                                and K (sender \<noteq> receiver)
                                 and K (len \<le> CARD('len) \<and> CARD('len) \<le> CARD(register)))
                  (UNIV \<inter> {s'. fault_message_relation_unguarded fmi (cslift s')}
                        \<inter> \<lbrace>\<acute>sender = tcb_ptr_to_ctcb_ptr sender\<rbrace>
@@ -3804,9 +3805,31 @@ lemma copyMRsFaultReply_ccorres:
          apply (fastforce simp: min_less_iff_disj unat_of_nat card_register word_bits_def
                                 length_msgRegisters n_msgRegisters_def
                          dest!: unat_mono)
-        apply (wpsimp wp: )
-
-  oops
+        apply (rule_tac Q="\<lambda>rv. valid_pspace' and K (rv \<noteq> Some 0)
+                                and case_option \<top> valid_ipc_buffer_ptr' rv"
+                 in hoare_strengthen_post)
+         apply (wpsimp wp: lookupIPCBuffer_not_Some_0 lookupIPCBuffer_aligned)
+        apply (clarsimp simp: valid_ipc_buffer_ptr'_def split: option.splits)
+       apply clarsimp
+       apply (vcg exspec=lookupIPCBuffer_modifies)
+      (* FIXME: wpsimp fails here *)
+      apply (clarsimp simp: zipWithM_x_mapM_x)
+      apply (wp hoare_vcg_const_imp_lift mapM_x_wp_inv)
+      apply clarsimp
+     apply clarsimp
+     apply (rule hoarep.Seq[where F=UNIV, rotated, OF conseqPost[OF _ _ subset_refl]])
+       apply (rule hoarep.While[where P="{s'. fault_message_relation_unguarded fmi (cslift s')}"])
+       apply (vcg, intro impI)
+       apply (prop_tac "unat i < CARD('len)")
+        apply (clarsimp simp: card_register n_msgRegisters_def unat_of_nat not_less
+                       split: if_splits dest!: unat_mono unat_mono_le)
+       apply (clarsimp simp: typ_heap_simps clift_heap_update_same fault_message_heap_simps)
+       apply fastforce
+      apply (clarsimp simp: length_msgRegisters n_msgRegisters_def dest!: unat_mono)
+     apply vcg
+    apply wp
+   apply (vcg exspec=Arch_getSanitiseRegisterInfo_modifies)
+  by auto
 
 lemma copyMRsFaultReply_ccorres:
   fixes fmi :: "('struct::mem_type, 'len::array_max_count) fault_message_info"
