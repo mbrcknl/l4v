@@ -990,12 +990,12 @@ lemma setThreadState_no_sch_change:
   done
 
 lemma asUser_obj_at_unchangedT:
-  assumes x: "\<forall>tcb con con'. con' \<in> fst (m con)
-        \<longrightarrow> P (tcbArch_update (\<lambda>_. atcbContextSet (snd con') (tcbArch tcb)) tcb) = P tcb" shows
-  "\<lbrace>obj_at' P t\<rbrace> asUser t' m \<lbrace>\<lambda>rv. obj_at' P t\<rbrace>"
-  apply (simp add: asUser_def split_def)
-  apply (wp threadSet_obj_at' threadGet_wp)
-  apply (clarsimp simp: obj_at'_def projectKOs x cong: if_cong)
+  assumes "\<forall>tcb rv ctxt. (rv,ctxt) \<in> fst (m (atcbContextGet (tcbArch tcb)))
+                         \<longrightarrow> t' = t
+                         \<longrightarrow> P (tcbArch_update (\<lambda>_. atcbContextSet ctxt (tcbArch tcb)) tcb) = P tcb"
+  shows "\<lbrace>obj_at' P t\<rbrace> asUser t' m \<lbrace>\<lambda>rv. obj_at' P t\<rbrace>"
+  apply (wpsimp simp: asUser_def wp: threadGet_wp)
+  apply (cases "t' = t"; clarsimp simp: obj_at'_def assms)
   done
 
 lemmas asUser_obj_at_unchanged

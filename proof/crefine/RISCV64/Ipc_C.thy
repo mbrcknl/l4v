@@ -306,6 +306,26 @@ definition
        od
     od"
 
+definition copyMRsFaultReply ::
+  "register list \<Rightarrow> machine_word \<Rightarrow> machine_word \<Rightarrow> nat \<Rightarrow> unit kernel"
+  where
+  "copyMRsFaultReply fault_regs sender receiver len \<equiv>
+    do sanitise_info \<leftarrow> getSanitiseRegisterInfo receiver;
+       regs \<leftarrow> return (take len fault_regs);
+       zipWithM_x (\<lambda>rs rd. do v \<leftarrow> asUser sender (getRegister rs);
+                              asUser receiver (setRegister rd (sanitiseRegister sanitise_info rd v))
+                           od)
+                  msgRegisters regs;
+       sendBuf \<leftarrow> lookupIPCBuffer False sender;
+       case sendBuf of
+            None \<Rightarrow> return ()
+          | Some bufferPtr \<Rightarrow>
+              mapM_x (\<lambda>i. do v \<leftarrow> loadWordUser (bufferPtr + PPtr (of_nat (Suc i) * word_size));
+                             asUser receiver (setRegister (regs ! i) (local.sanitiseRegister sanitise_info (regs ! i) v))
+                          od)
+                     [length msgRegisters ..< length regs]
+    od"
+
 definition
   "handleFaultReply' f sender receiver \<equiv> do
      tag \<leftarrow> getMessageInfo sender;
@@ -315,29 +335,11 @@ definition
        CapFault _ _ _ \<Rightarrow> return True
      | ArchFault af \<Rightarrow> handleArchFaultReply' af sender receiver tag
      | UnknownSyscallException _ \<Rightarrow> do
-         t \<leftarrow> getSanitiseRegisterInfo receiver;
-         regs \<leftarrow> return $ take (unat mlen) syscallMessage;
-         zipWithM_x (\<lambda>rs rd. do
-           v \<leftarrow> asUser sender $ getRegister rs;
-           asUser receiver $ setRegister rd $ sanitiseRegister t rd v
-         od) msgRegisters regs;
-         sendBuf \<leftarrow> lookupIPCBuffer False sender;
-         case sendBuf of
-           None \<Rightarrow> return ()
-         | Some bufferPtr \<Rightarrow>
-             zipWithM_x (\<lambda>i rd. do
-               v \<leftarrow> loadWordUser (bufferPtr + PPtr (i * 8));
-               asUser receiver $ setRegister rd $ sanitiseRegister t rd v
-             od) [(scast n_msgRegisters :: machine_word) + 1.e. scast n_syscallMessage] (drop (unat (scast n_msgRegisters :: machine_word)) regs);
-       return (label = 0)
+         copyMRsFaultReply syscallMessage sender receiver (unat mlen);
+         return (label = 0)
        od
      | UserException _ _ \<Rightarrow> do
-         t \<leftarrow> getSanitiseRegisterInfo receiver;
-         regs \<leftarrow> return $ take (unat mlen) exceptionMessage;
-         zipWithM_x (\<lambda>rs rd. do
-           v \<leftarrow> asUser sender $ getRegister rs;
-           asUser receiver $ setRegister rd $ sanitiseRegister t rd v
-         od) msgRegisters regs;
+         copyMRsFaultReply exceptionMessage sender receiver (unat mlen);
          return (label = 0)
        od
   od"
@@ -390,11 +392,6 @@ lemma handleArchFaultReply':
     apply (rule bind_apply_cong [OF refl], rename_tac rv r'')
     apply (case_tac sb, simp_all add: word_size n_msgRegisters_def)[1]
   done
-
-lemmas lookup_uset_getreg_swap = bind_inv_inv_comm[OF lookupIPCBuffer_inv
-                                 user_getreg_inv'
-                                 empty_fail_lookupIPCBuffer
-                                 empty_fail_asUser[OF empty_fail_getRegister]]
 
 end
 
@@ -474,16 +471,6 @@ lemma getSanitiseRegisterInfo_moreMapM_comm:
   done
 
 
-lemma monadic_rewrite_symb_exec_r':
-  "\<lbrakk> \<And>s. \<lbrace>(=) s\<rbrace> m \<lbrace>\<lambda>r. (=) s\<rbrace>; no_fail P m;
-     \<And>rv. monadic_rewrite F False (Q rv) x (y rv);
-     \<lbrace>P\<rbrace> m \<lbrace>Q\<rbrace> \<rbrakk>
-      \<Longrightarrow> monadic_rewrite F False P x (m >>= y)"
-  apply (rule monadic_rewrite_imp)
-   apply (rule monadic_rewrite_symb_exec_r; assumption)
-  apply simp
-  done
-
 lemma monadic_rewrite_threadGet_return:
   "monadic_rewrite True False (tcb_at' r) (return x) (do t \<leftarrow> threadGet f r; return x od)"
   apply (rule monadic_rewrite_symb_exec_r')
@@ -539,16 +526,65 @@ lemma monadic_rewrite_do_flip:
   apply (simp add: bind_assoc)
   done
 
-lemma handleFaultReply':
-  notes option.case_cong_weak [cong] wordSize_def'[simp] take_append[simp del] prod.case_cong_weak[cong]
+(* FIXME: move *)
+lemma asUser_mapM:
+  assumes "\<And>x. empty_fail (f x)"
+  shows "asUser t (mapM f xs) = do stateAssert (tcb_at' t) []; mapM (\<lambda>x. asUser t (f x)) xs od"
+  using assms by (simp add: submonad_mapM [OF submonad_asUser submonad_asUser] o_def)
+
+lemma copyMRsFaultReply_rewrite:
   assumes neq: "s \<noteq> r"
-  shows "monadic_rewrite True False (tcb_at' s and tcb_at' r) (do
-    tag \<leftarrow> getMessageInfo s;
-    sb \<leftarrow> lookupIPCBuffer False s;
-    msg \<leftarrow> getMRs s sb tag;
-    handleFaultReply f r (msgLabel tag) msg
-  od) (handleFaultReply' f s r)"
-  apply (unfold handleFaultReply'_def getMRs_def msgMaxLength_def
+  shows "monadic_rewrite True False (tcb_at' sender and tcb_at' receiver)
+                         (do send_buf \<leftarrow> lookupIPCBuffer False sender;
+                             msg \<leftarrow> getMRs sender send_buf tag;
+                             san \<leftarrow> getSanitiseRegisterInfo receiver;
+                             _ \<leftarrow> asUser receiver (zipWithM_x (\<lambda>r v. setRegister r (sanitiseRegister san r v)) fault_regs msg);
+                             return v
+                          od)
+                         (do _ \<leftarrow> copyMRsFaultReply fault_regs sender receiver (unat (msgLength tag));
+                             return v
+                          od)"
+  apply (simp add: copyMRsFaultReply_def getMRs_def bind_assoc mapM_map_simp comp_def
+                   zipWithM_x_mapM_x asUser_mapM_x asUser_mapM split_def
+             cong: option.case_cong)
+  (* Move getSanitiseRegisterInfo to the top, and peel it off. *)
+  apply (subst bind_inv_inv_comm[where g="getSanitiseRegisterInfo receiver"], (wpsimp wp: mapM_wp' asUser_inv)+)+
+  apply (rule monadic_rewrite_bind_tail[where R=R and Q="\<lambda>_. R" for R, rotated], wpsimp, rename_tac san)
+
+find_theorems asUser obj_at'
+thm asUser_obj_at_unchanged
+
+term obj_at'
+term projectKO_opt
+term assert
+find_theorems stateAssert monadic_rewrite
+find_theorems monadic_rewrite name:exec
+thm monadic_rewrite_imp[OF monadic_rewrite_stateAssert]
+
+thm lookupIPCBuffer_def threadGet_def getThreadBufferSlot_def tcbIPCBufferSlot_def locateSlotTCB_def locateSlotBasic_def
+thm getSlotCap_def getCTE_def getObject_def lookupAround2_def loadObject_cte
+
+  sorry
+
+lemma handleFaultReply':
+  assumes neq: "s \<noteq> r"
+  shows "monadic_rewrite True False (tcb_at' s and tcb_at' r)
+                         (do tag \<leftarrow> getMessageInfo s;
+                             sb \<leftarrow> lookupIPCBuffer False s;
+                             msg \<leftarrow> getMRs s sb tag;
+                             handleFaultReply f r (msgLabel tag) msg
+                          od)
+                         (handleFaultReply' f s r)"
+  apply (simp add: handleFaultReply_def handleFaultReply'_def)
+  apply (rule monadic_rewrite_bind_tail[where R=R and Q="\<lambda>_. R" for R, rotated], wpsimp)
+  apply (cases f; simp add: copyMRsFaultReply_rewrite[OF neq])
+   apply (intro monadic_rewrite_symb_exec_l[where Q="\<top>\<top>"] monadic_rewrite_refl; wpsimp)
+  apply (simp add: handleArchFaultReply'[symmetric] monadic_rewrite_imp[OF monadic_rewrite_is_refl])
+  done
+
+(*
+
+  apply (unfold handleFaultReply'_def copyMRsFaultReply_def getMRs_def msgMaxLength_def
                 bit_def msgLengthBits_def msgRegisters_unfold
                 fromIntegral_simp1 fromIntegral_simp2
                 shiftL_word)
@@ -558,6 +594,7 @@ lemma handleFaultReply':
                          asUser_return submonad_asUser.fn_stateAssert)
    apply (case_tac f, simp_all add: handleFaultReply_def zipWithM_x_mapM_x zip_take)
       (* UserException *)
+(*
       apply (clarsimp simp: handleFaultReply_def zipWithM_x_mapM_x
                             zip_Cons RISCV64_H.exceptionMessage_def
                             RISCV64.exceptionMessage_def
@@ -580,6 +617,8 @@ lemma handleFaultReply':
                         monadic_rewrite_symb_exec_l[OF mapM_x_mapM_valid[OF mapM_x_wp']]
                  | wp asUser_typ_ats lookupIPCBuffer_inv )+)+))
       apply wp
+*)
+  subgoal sorry
      (* capFault *)
      apply (rule monadic_rewrite_symb_exec_l, (wp empty_fail_asUser empty_fail_getRegister)+)+
           apply(case_tac rv)
@@ -709,6 +748,7 @@ lemma handleFaultReply':
                           asUser_return submonad_asUser.fn_stateAssert)
    apply wpsimp+
   done
+*)
 
 end
 
@@ -3637,27 +3677,6 @@ lemma syscall_fmi_len[simp]:
 lemma unat_mono_le:
   "x \<le> y \<Longrightarrow> unat x \<le> unat y"
   by (cases "x = y"; simp add: unat_mono less_imp_le)
-
-definition copyMRsFaultReply ::
-  "('struct::c_type, 'len::finite) fault_message_info \<Rightarrow> machine_word \<Rightarrow> machine_word \<Rightarrow> nat \<Rightarrow> unit kernel"
-  where
-  "copyMRsFaultReply fmi sender receiver len \<equiv>
-    do sanitise_info \<leftarrow> getSanitiseRegisterInfo receiver;
-       regs \<leftarrow> return (take len (fmi_reg fmi));
-       zipWithM_x (\<lambda>rs rd. do v \<leftarrow> asUser sender (getRegister rs);
-                              asUser receiver (setRegister rd (sanitiseRegister sanitise_info rd v))
-                           od)
-                  msgRegisters regs;
-       sendBuf \<leftarrow> lookupIPCBuffer False sender;
-       case sendBuf of
-            None \<Rightarrow> return ()
-          | Some bufferPtr \<Rightarrow>
-              zipWithM_x (\<lambda>i rd. do v \<leftarrow> loadWordUser (bufferPtr + PPtr (of_nat (Suc i) * word_size));
-                                    asUser receiver (setRegister rd (local.sanitiseRegister sanitise_info rd v))
-                                 od)
-                         [length msgRegisters ..< CARD('len)]
-                         (drop (length msgRegisters) regs)
-    od"
 
 lemma array_assertion_fault_message_relation:
   fixes fmi :: "('struct::mem_type, 'len::array_max_count) fault_message_info"
